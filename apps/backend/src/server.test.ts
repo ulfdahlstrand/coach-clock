@@ -3,7 +3,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApiServer } from './server.js';
 
 let baseUrl: string;
-const server = createApiServer({ port: 0, corsOrigins: ['http://localhost:5174'] });
+const server = createApiServer({
+  port: 0,
+  corsOrigins: ['http://localhost:5174'],
+  databaseUrl: 'postgres://coach_clock:coach_clock@localhost:5434/coach_clock',
+});
 
 beforeAll(async () => {
   await new Promise<void>((resolve) => {
