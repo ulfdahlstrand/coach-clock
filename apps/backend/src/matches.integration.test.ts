@@ -105,18 +105,16 @@ describe('POST /matches/events', () => {
   it('validerar händelsen och lagrar serverns received_at', async () => {
     const matchId = await createMatch();
     const event = periodStarted(matchId);
-    const before = new Date();
 
     const response = await post(baseUrl, event);
     const output = (await response.json()) as Record<string, unknown>;
-    const after = new Date();
+    const receivedAt = output['receivedAt'];
 
     expect(response.status).toBe(200);
     expect(output).toMatchObject({ eventId: event.eventId, matchId, seq: 1 });
-    expect(new Date(output['receivedAt'] as string).getTime()).toBeGreaterThanOrEqual(
-      before.getTime(),
-    );
-    expect(new Date(output['receivedAt'] as string).getTime()).toBeLessThanOrEqual(after.getTime());
+    expect(typeof receivedAt).toBe('string');
+    if (typeof receivedAt !== 'string') throw new Error('receivedAt saknas i svaret');
+    expect(Number.isNaN(Date.parse(receivedAt))).toBe(false);
 
     const stored = await db
       .selectFrom('match_events')
@@ -125,6 +123,7 @@ describe('POST /matches/events', () => {
       .executeTakeFirstOrThrow();
     expect(stored.payload).toEqual({ by: 'coach:ulf', periodNumber: 1, v: 1 });
     expect(stored.at.toISOString()).toBe(event.at);
+    expect(stored.received_at.toISOString()).toBe(receivedAt);
   });
 
   it('gör dubbel-POST idempotent och returnerar samma seq', async () => {

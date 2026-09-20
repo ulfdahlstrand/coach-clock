@@ -12,6 +12,7 @@ describe('contract', () => {
       'createPlayer',
       'updatePlayer',
       'matches',
+      'time',
     ]);
 
     for (const procedure of Object.values(contract).filter(isContractProcedure)) {
