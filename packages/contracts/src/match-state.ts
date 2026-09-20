@@ -373,7 +373,7 @@ function deriveMatchStateInternal(input: unknown, now: Date): DerivedMatchState 
       ignored.push(eventIgnored(entry, 'future', 'händelsen ligger efter now'));
       continue;
     }
-    timed.push({ ...entry, event: { ...entry.event, at } as MatchEvent, atMs });
+    timed.push({ ...entry, event: { ...entry.event, at }, atMs });
   }
   timed.sort(sortTimed);
 

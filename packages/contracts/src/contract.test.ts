@@ -1,10 +1,23 @@
 import { isContractProcedure, oc } from '@orpc/contract';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { contract } from './index.js';
+import { contract, createPlayerInputSchema, updatePlayerInputSchema } from './index.js';
 
 describe('contract', () => {
-  it('exponerar append-proceduren', () => {
+  it('exponerar lag-, spelar- och append-procedurerna', () => {
+    expect(Object.keys(contract)).toEqual([
+      'listTeams',
+      'createTeam',
+      'listPlayers',
+      'createPlayer',
+      'updatePlayer',
+      'matches',
+      'time',
+    ]);
+
+    for (const procedure of Object.values(contract).filter(isContractProcedure)) {
+      expect(isContractProcedure(procedure)).toBe(true);
+    }
     expect(isContractProcedure(contract.matches.events)).toBe(true);
     expect(contract.matches.events['~orpc'].route).toMatchObject({
       method: 'POST',
@@ -30,5 +43,18 @@ describe('contract', () => {
     });
 
     expect(isContractProcedure(extended.ping)).toBe(true);
+  });
+
+  it('validerar spelarens tröjnummer och kräver en faktisk uppdatering', () => {
+    const teamId = '00000000-0000-4000-8000-000000000001';
+    const playerId = '00000000-0000-4000-8000-000000000002';
+
+    expect(createPlayerInputSchema.safeParse({ teamId, name: 'Alva', number: 0 }).success).toBe(
+      false,
+    );
+    expect(updatePlayerInputSchema.safeParse({ teamId, playerId }).success).toBe(false);
+    expect(updatePlayerInputSchema.safeParse({ teamId, playerId, archived: true }).success).toBe(
+      true,
+    );
   });
 });

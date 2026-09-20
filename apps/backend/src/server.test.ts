@@ -46,6 +46,13 @@ describe('GET /openapi.json', () => {
           '/matches/events': z
             .object({ get: z.object({}).passthrough(), post: z.object({}).passthrough() })
             .passthrough(),
+          '/players': z
+            .object({ get: z.object({}).passthrough(), post: z.object({}).passthrough() })
+            .passthrough(),
+          '/players/update': z.object({ post: z.object({}).passthrough() }).passthrough(),
+          '/teams': z
+            .object({ get: z.object({}).passthrough(), post: z.object({}).passthrough() })
+            .passthrough(),
           '/time': z.object({ get: z.object({}).passthrough() }).passthrough(),
         }),
       })
