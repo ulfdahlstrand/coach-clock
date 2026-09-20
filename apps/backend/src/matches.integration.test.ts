@@ -5,21 +5,28 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDb } from './db/client.js';
 import { createMigrator, migrateToLatest } from './db/migrator.js';
 import { readEnv } from './env.js';
-import { FixedWindowRateLimiter } from './rate-limit.js';
+import { ExponentialBackoffRateLimiter, FixedWindowRateLimiter } from './rate-limit.js';
 import { createApiServer } from './server.js';
 
 const env = readEnv();
 const db = createDb(env.databaseUrl);
 const serverNow = new Date('2026-09-20T12:00:00.000Z');
+let joinLimiterNow = serverNow.getTime();
 const server = createApiServer(env, {
   db,
   now: () => serverNow,
   rateLimiter: new FixedWindowRateLimiter({ maxRequests: 100, windowMs: 60_000 }),
+  joinRateLimiter: new ExponentialBackoffRateLimiter({
+    baseDelayMs: 1,
+    maxDelayMs: 60_000,
+    now: () => joinLimiterNow,
+  }),
 });
 const limitedServer = createApiServer(env, {
   db,
   now: () => serverNow,
   rateLimiter: new FixedWindowRateLimiter({ maxRequests: 1, windowMs: 60_000 }),
+  joinRateLimiter: new ExponentialBackoffRateLimiter({ baseDelayMs: 60_000, maxDelayMs: 60_000 }),
 });
 
 let baseUrl: string;
@@ -78,6 +85,14 @@ function periodStarted(matchId: string, eventId = uuid(), periodNumber = 1) {
 
 async function post(url: string, body: unknown): Promise<Response> {
   return fetch(`${url}/matches/events`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+async function postTo(url: string, path: string, body: unknown): Promise<Response> {
+  return fetch(`${url}${path}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
@@ -238,6 +253,115 @@ describe('GET /matches', () => {
 
     expect(missing.status).toBe(404);
     expect(invalid.status).toBe(400);
+  });
+});
+
+describe('POST /matches/share och /matches/join', () => {
+  async function createShare(
+    url = baseUrl,
+  ): Promise<{ matchId: string; code: string; token: string }> {
+    const matchId = await createMatch();
+    const response = await postTo(url, '/matches/share', { matchId });
+    const output = (await response.json()) as Record<string, unknown>;
+    expect(response.status).toBe(200);
+    expect(output['joinCode']).toMatch(
+      /^[0-9ABCDEFGHJKMNPQRSTVWXYZ]{3}-[0-9ABCDEFGHJKMNPQRSTVWXYZ]{3}$/,
+    );
+    expect(output['linkToken']).toMatch(/^[A-Za-z0-9_-]{24}$/);
+    return { matchId, code: output['joinCode'] as string, token: output['linkToken'] as string };
+  }
+
+  it('skapar en länk med en kryptografisk token och går med via kortkoden', async () => {
+    const share = await createShare();
+    const join = await postTo(baseUrl, '/matches/join', {
+      code: share.code,
+      displayName: 'Ulf, telefon',
+    });
+    const output = (await join.json()) as Record<string, unknown>;
+
+    expect(join.status).toBe(200);
+    expect(output).toMatchObject({ matchId: share.matchId, displayName: 'Ulf, telefon' });
+    expect(join.headers.get('set-cookie')).toMatch(
+      /coach_clock_participant=[^;]+; HttpOnly; Path=\/; SameSite=Lax/,
+    );
+
+    const match = await db
+      .selectFrom('matches')
+      .select(['join_code', 'join_token_hash'])
+      .where('id', '=', share.matchId)
+      .executeTakeFirstOrThrow();
+    expect(match.join_code).toBe(share.code.replace('-', ''));
+    expect(match.join_token_hash).toMatch(/^[a-f0-9]{64}$/);
+
+    const participant = await db
+      .selectFrom('participants')
+      .select(['match_id', 'display_name', 'token_hash'])
+      .where('match_id', '=', share.matchId)
+      .executeTakeFirstOrThrow();
+    expect(participant).toMatchObject({ match_id: share.matchId, display_name: 'Ulf, telefon' });
+    expect(participant.token_hash).toMatch(/^[a-f0-9]{64}$/);
+    expect(join.headers.get('set-cookie')).not.toContain(participant.token_hash);
+  });
+
+  it('godtar den längre hemliga länktokenen', async () => {
+    const share = await createShare();
+    const join = await postTo(baseUrl, '/matches/join', {
+      linkToken: share.token,
+      displayName: 'Sara, iPad',
+    });
+
+    expect(join.status).toBe(200);
+    await expect(join.json()).resolves.toMatchObject({ matchId: share.matchId });
+  });
+
+  it('avvisar fel kod utan att skapa en deltagare', async () => {
+    joinLimiterNow += 10_000;
+    const share = await createShare();
+    const response = await postTo(baseUrl, '/matches/join', {
+      code: 'ABC-123',
+      displayName: 'Fel person',
+    });
+
+    expect(response.status).toBe(404);
+    await expect(
+      db.selectFrom('participants').select('id').where('match_id', '=', share.matchId).execute(),
+    ).resolves.toHaveLength(0);
+  });
+
+  it('avvisar kod mer än 24 timmar efter matchslut', async () => {
+    joinLimiterNow += 10_000;
+    const share = await createShare();
+    await db
+      .updateTable('matches')
+      .set({ status: 'ended', ended_at: new Date(serverNow.getTime() - 24 * 60 * 60 * 1_000 - 1) })
+      .where('id', '=', share.matchId)
+      .execute();
+
+    const response = await postTo(baseUrl, '/matches/join', {
+      code: share.code,
+      displayName: 'Sen åskådare',
+    });
+    expect(response.status).toBe(404);
+  });
+
+  it('rate-limitar felaktiga försök per både IP och kod med backoff', async () => {
+    const share = await createShare(limitedBaseUrl);
+    const bad = await postTo(limitedBaseUrl, '/matches/join', {
+      code: 'ZZZ-999',
+      displayName: 'Gissare',
+    });
+    const blockedSameCode = await postTo(limitedBaseUrl, '/matches/join', {
+      code: 'ZZZ-999',
+      displayName: 'Gissare igen',
+    });
+    const blockedSameIp = await postTo(limitedBaseUrl, '/matches/join', {
+      code: share.code,
+      displayName: 'Rätt kod, men samma IP',
+    });
+
+    expect(bad.status).toBe(404);
+    expect(blockedSameCode.status).toBe(429);
+    expect(blockedSameIp.status).toBe(429);
   });
 });
 

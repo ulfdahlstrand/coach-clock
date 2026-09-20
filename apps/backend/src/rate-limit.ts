@@ -69,3 +69,73 @@ export const defaultAppendRateLimiter = new FixedWindowRateLimiter({
   maxRequests: 120,
   windowMs: 60_000,
 });
+
+export interface JoinRateLimiter {
+  isAllowed(ip: string, code: string): boolean;
+  recordFailure(ip: string, code: string): void;
+  clear(ip: string, code: string): void;
+}
+
+export interface ExponentialBackoffRateLimiterOptions {
+  readonly baseDelayMs: number;
+  readonly maxDelayMs: number;
+  readonly now?: () => number;
+}
+
+type Backoff = { failures: number; blockedUntil: number };
+
+/**
+ * Korta koder är medvetet lätta att skriva, men också möjliga att gissa.
+ * Misslyckade försök spärras därför både per avsändar-IP och per kod. Fördröjningen
+ * dubblas vid varje försök och begränsas av maxDelayMs.
+ */
+export class ExponentialBackoffRateLimiter implements JoinRateLimiter {
+  readonly #backoffs = new Map<string, Backoff>();
+  readonly #baseDelayMs: number;
+  readonly #maxDelayMs: number;
+  readonly #now: () => number;
+
+  constructor(options: ExponentialBackoffRateLimiterOptions) {
+    if (!Number.isFinite(options.baseDelayMs) || options.baseDelayMs <= 0) {
+      throw new Error('baseDelayMs måste vara större än noll');
+    }
+    if (!Number.isFinite(options.maxDelayMs) || options.maxDelayMs < options.baseDelayMs) {
+      throw new Error('maxDelayMs måste vara minst baseDelayMs');
+    }
+    this.#baseDelayMs = options.baseDelayMs;
+    this.#maxDelayMs = options.maxDelayMs;
+    this.#now = options.now ?? Date.now;
+  }
+
+  isAllowed(ip: string, code: string): boolean {
+    const now = this.#now();
+    return this.#isKeyAllowed(`ip:${ip}`, now) && this.#isKeyAllowed(`code:${code}`, now);
+  }
+
+  recordFailure(ip: string, code: string): void {
+    const now = this.#now();
+    this.#record(`ip:${ip}`, now);
+    this.#record(`code:${code}`, now);
+  }
+
+  clear(ip: string, code: string): void {
+    this.#backoffs.delete(`ip:${ip}`);
+    this.#backoffs.delete(`code:${code}`);
+  }
+
+  #isKeyAllowed(key: string, now: number): boolean {
+    return (this.#backoffs.get(key)?.blockedUntil ?? 0) <= now;
+  }
+
+  #record(key: string, now: number): void {
+    const previous = this.#backoffs.get(key);
+    const failures = (previous?.failures ?? 0) + 1;
+    const delay = Math.min(this.#baseDelayMs * 2 ** (failures - 1), this.#maxDelayMs);
+    this.#backoffs.set(key, { failures, blockedUntil: now + delay });
+  }
+}
+
+export const defaultJoinRateLimiter = new ExponentialBackoffRateLimiter({
+  baseDelayMs: 1_000,
+  maxDelayMs: 60 * 60_000,
+});

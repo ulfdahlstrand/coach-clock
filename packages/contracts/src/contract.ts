@@ -42,6 +42,55 @@ export const getMatchContract = oc
   .input(z.object({ matchId: matchIdSchema }))
   .output(matchMetadataSchema);
 
+const joinCodeSchema = z
+  .string()
+  .trim()
+  .transform((value) => value.replace('-', '').toUpperCase())
+  .pipe(z.string().regex(/^[0-9ABCDEFGHJKMNPQRSTVWXYZ]{6}$/));
+
+const linkTokenSchema = z.string().regex(/^[A-Za-z0-9_-]{24}$/);
+
+export const createMatchShareContract = oc
+  .route({
+    method: 'POST',
+    path: '/matches/share',
+    operationId: 'createMatchShare',
+    summary: 'Skapa en säker delningslänk och kort anslutningskod',
+  })
+  .input(z.object({ matchId: matchIdSchema }))
+  .output(
+    z.object({
+      joinCode: z.string().regex(/^[0-9ABCDEFGHJKMNPQRSTVWXYZ]{3}-[0-9ABCDEFGHJKMNPQRSTVWXYZ]{3}$/),
+      linkToken: linkTokenSchema,
+    }),
+  );
+
+export const joinMatchContract = oc
+  .route({
+    method: 'POST',
+    path: '/matches/join',
+    operationId: 'joinMatch',
+    summary: 'Gå med i en delad match utan konto',
+  })
+  .input(
+    z
+      .object({
+        displayName: z.string().trim().min(1).max(100),
+        code: joinCodeSchema.optional(),
+        linkToken: linkTokenSchema.optional(),
+      })
+      .refine(({ code, linkToken }) => code !== undefined || linkToken !== undefined, {
+        message: 'Ange kod eller länktoken',
+      }),
+  )
+  .output(
+    z.object({
+      participantId: z.uuid(),
+      matchId: matchIdSchema,
+      displayName: z.string(),
+    }),
+  );
+
 /** Svaret är samma oavsett om händelsen skapades eller redan fanns. */
 export const appendMatchEventOutputSchema = z.object({
   eventId: z.uuid(),
@@ -127,6 +176,8 @@ export const contract = oc.router({
     .output(updatePlayerOutputSchema),
   matches: {
     get: getMatchContract,
+    share: createMatchShareContract,
+    join: joinMatchContract,
     events: appendMatchEventContract,
     listEvents: listMatchEventsContract,
   },

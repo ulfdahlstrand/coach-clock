@@ -43,6 +43,8 @@ describe('GET /openapi.json', () => {
         info: z.object({ title: z.literal('coach-clock API'), version: z.literal('0.0.0') }),
         paths: z.object({
           '/matches': z.object({ get: z.object({}).passthrough() }).passthrough(),
+          '/matches/share': z.object({ post: z.object({}).passthrough() }).passthrough(),
+          '/matches/join': z.object({ post: z.object({}).passthrough() }).passthrough(),
           '/matches/events': z
             .object({ get: z.object({}).passthrough(), post: z.object({}).passthrough() })
             .passthrough(),
