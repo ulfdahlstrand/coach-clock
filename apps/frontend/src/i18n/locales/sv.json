@@ -5,7 +5,8 @@
   },
   "nav": {
     "start": "Start",
-    "about": "Om appen"
+    "about": "Om appen",
+    "debug": "Debugg"
   },
   "start": {
     "heading": "Matchklockan är redo",
@@ -15,6 +16,17 @@
   "about": {
     "heading": "Om appen",
     "body": "coach-clock körs på telefonen vid sidlinjen: stora träffytor, allt nåbart med en tumme och en matchvy som tål november.",
+    "back": "Tillbaka till start"
+  },
+  "serverTime": {
+    "heading": "Serverklocka",
+    "body": "Kontrollerar klockskillnaden mot servern med flera mätningar.",
+    "loading": "Synkroniserar…",
+    "error": "Kunde inte synkronisera serverklockan.",
+    "now": "Serverns tid",
+    "offset": "Klockskillnad",
+    "rtt": "Snabbaste svarstid",
+    "samples": "Mätningar",
     "back": "Tillbaka till start"
   },
   "error": {

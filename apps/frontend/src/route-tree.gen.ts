@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as OmRouteImport } from './routes/om'
+import { Route as DebuggServerklockaRouteImport } from './routes/debugg.serverklocka'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -22,31 +23,40 @@ const OmRoute = OmRouteImport.update({
   path: '/om',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DebuggServerklockaRoute = DebuggServerklockaRouteImport.update({
+  id: '/debugg/serverklocka',
+  path: '/debugg/serverklocka',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/om': typeof OmRoute
+  '/debugg/serverklocka': typeof DebuggServerklockaRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/om': typeof OmRoute
+  '/debugg/serverklocka': typeof DebuggServerklockaRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/om': typeof OmRoute
+  '/debugg/serverklocka': typeof DebuggServerklockaRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/om'
+  fullPaths: '/' | '/om' | '/debugg/serverklocka'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/om'
-  id: '__root__' | '/' | '/om'
+  to: '/' | '/om' | '/debugg/serverklocka'
+  id: '__root__' | '/' | '/om' | '/debugg/serverklocka'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   OmRoute: typeof OmRoute
+  DebuggServerklockaRoute: typeof DebuggServerklockaRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -65,12 +75,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OmRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/debugg/serverklocka': {
+      id: '/debugg/serverklocka'
+      path: '/debugg/serverklocka'
+      fullPath: '/debugg/serverklocka'
+      preLoaderRoute: typeof DebuggServerklockaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   OmRoute: OmRoute,
+  DebuggServerklockaRoute: DebuggServerklockaRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
