@@ -3,6 +3,8 @@ import { ORPCError, implement } from '@orpc/server';
 import type { Kysely } from 'kysely';
 import { toMatch, type Database, type JsonObject } from '../db/types.js';
 import type { RateLimiter } from '../rate-limit.js';
+import type { JoinRateLimiter } from '../rate-limit.js';
+import type { ServerResponse } from 'node:http';
 
 /** En klientklocka får gå högst fem minuter före servern. */
 export const MAX_EVENT_FUTURE_SKEW_MS = 5 * 60 * 1_000;
@@ -11,7 +13,9 @@ export interface ApiContext {
   readonly db: Kysely<Database>;
   readonly clientId: string;
   readonly rateLimiter: RateLimiter;
+  readonly joinRateLimiter: JoinRateLimiter;
   readonly now: () => Date;
+  readonly response: ServerResponse;
 }
 
 const os = implement(contract).$context<ApiContext>();
