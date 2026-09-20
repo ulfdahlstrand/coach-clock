@@ -1,0 +1,28 @@
+{
+  "name": "@coach-clock/backend",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch --import tsx/esm src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "echo '@coach-clock/backend: eslint kopplas in i #5'",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@coach-clock/contracts": "*",
+    "@orpc/openapi": "^1.15.2",
+    "@orpc/server": "^1.15.2",
+    "@orpc/zod": "^1.15.2",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@coach-clock/tsconfig": "*",
+    "@types/node": "^26.6.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
+  }
+}
