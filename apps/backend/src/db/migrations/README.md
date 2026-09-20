@@ -24,5 +24,6 @@ export async function down(db: Kysely<unknown>): Promise<void> {
 `down` är inte valfri: utan den går en felaktig migration inte att backa i en integrationstest
 eller på en delad utvecklingsdatabas.
 
-Mappen är tom än — matchdomänens tabeller kommer i #12. Filer som inte är migrationer
-(som den här) ignoreras av `FileMigrationProvider`.
+Matchdomänens tabeller ligger i `20260920103000_match_domain.ts`. Filer som inte är
+migrationer (som den här) ignoreras av `FileMigrationProvider` — testerna hör därför
+hemma i `src/db/`, inte här.
