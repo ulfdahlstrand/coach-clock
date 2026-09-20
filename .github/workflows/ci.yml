@@ -8,6 +8,23 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    env:
+      TEST_DATABASE_URL: postgres://coach_clock:coach_clock@localhost:5432/coach_clock_test
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: coach_clock
+          POSTGRES_PASSWORD: coach_clock
+          POSTGRES_DB: coach_clock_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U coach_clock -d coach_clock_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
 
     steps:
       - uses: actions/checkout@v4
@@ -26,6 +43,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Verify generated route tree
+        run: git diff --exit-code -- apps/frontend/src/route-tree.gen.ts
+
       - name: Typecheck
         run: npm run typecheck
 
@@ -34,3 +54,8 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: Integration test
+        env:
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+        run: npm run test:integration --workspace @coach-clock/backend
