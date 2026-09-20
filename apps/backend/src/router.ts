@@ -1,7 +1,8 @@
 import { contract } from '@coach-clock/contracts';
 import { implement } from '@orpc/server';
 import type { ApiContext } from './procedures/matches.js';
-import { appendMatchEvent } from './procedures/matches.js';
+import { appendMatchEvent, getMatch, listMatchEvents } from './procedures/matches.js';
+import { getServerTime } from './procedures/time.js';
 
 const os = implement(contract).$context<ApiContext>();
 
@@ -12,8 +13,11 @@ const os = implement(contract).$context<ApiContext>();
  */
 export const router = os.router({
   matches: {
+    get: getMatch,
     events: appendMatchEvent,
+    listEvents: listMatchEvents,
   },
+  time: getServerTime,
 });
 
 export type AppRouter = typeof router;

@@ -1,8 +1,7 @@
-import type { MatchEvent } from '@coach-clock/contracts';
-import { contract } from '@coach-clock/contracts';
+import { contract, parseMatchEvent, type MatchEvent } from '@coach-clock/contracts';
 import { ORPCError, implement } from '@orpc/server';
 import type { Kysely } from 'kysely';
-import type { Database, JsonObject } from '../db/types.js';
+import { toMatch, type Database, type JsonObject } from '../db/types.js';
 import type { RateLimiter } from '../rate-limit.js';
 
 /** En klientklocka får gå högst fem minuter före servern. */
@@ -25,6 +24,58 @@ function eventPayload(event: MatchEvent): JsonObject {
   delete payload['at'];
   return payload;
 }
+
+export const getMatch = os.matches.get.handler(async ({ input, context }) => {
+  const row = await context.db
+    .selectFrom('matches')
+    .selectAll()
+    .where('id', '=', input.matchId)
+    .executeTakeFirst();
+
+  if (row === undefined) {
+    throw new ORPCError('NOT_FOUND', { message: 'Matchen finns inte' });
+  }
+
+  const match = toMatch(row);
+
+  return {
+    ...match,
+    createdAt: match.createdAt.toISOString(),
+    endedAt: match.endedAt?.toISOString() ?? null,
+  };
+});
+
+export const listMatchEvents = os.matches.listEvents.handler(async ({ input, context }) => {
+  const match = await context.db
+    .selectFrom('matches')
+    .select('id')
+    .where('id', '=', input.matchId)
+    .executeTakeFirst();
+
+  if (match === undefined) {
+    throw new ORPCError('NOT_FOUND', { message: 'Matchen finns inte' });
+  }
+
+  const rows = await context.db
+    .selectFrom('match_events')
+    .select(['event_id', 'match_id', 'seq', 'type', 'payload', 'at', 'received_at'])
+    .where('match_id', '=', input.matchId)
+    .where('seq', '>', input.sinceSeq)
+    .orderBy('seq')
+    .execute();
+
+  return rows.map((row) => ({
+    seq: row.seq,
+    receivedAt: row.received_at.toISOString(),
+    event: parseMatchEvent({
+      ...row.payload,
+      eventId: row.event_id,
+      matchId: row.match_id,
+      type: row.type,
+      at: row.at.toISOString(),
+    }),
+  }));
+});
 
 export const appendMatchEvent = os.matches.events.handler(async ({ input, context }) => {
   const rateLimitKey = `${context.clientId}:${input.matchId}`;

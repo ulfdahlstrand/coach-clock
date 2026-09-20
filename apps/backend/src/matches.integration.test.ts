@@ -84,6 +84,11 @@ async function post(url: string, body: unknown): Promise<Response> {
   });
 }
 
+function get(url: string, path: string, query: Record<string, string>): Promise<Response> {
+  const search = new URLSearchParams(query);
+  return fetch(`${url}${path}?${search.toString()}`);
+}
+
 beforeAll(async () => {
   await createMigrator(db).migrateTo(NO_MIGRATIONS);
   const migrations = await migrateToLatest(db);
@@ -202,5 +207,110 @@ describe('POST /matches/events', () => {
     expect(retry.status).toBe(200);
     expect(await retry.json()).toEqual(await first.json());
     expect(blocked.status).toBe(429);
+  });
+});
+
+describe('GET /matches', () => {
+  it('returnerar matchens metadata utan tokenhash', async () => {
+    const matchId = await createMatch();
+    const response = await get(baseUrl, '/matches', { matchId });
+    const output = (await response.json()) as Record<string, unknown>;
+
+    expect(response.status).toBe(200);
+    expect(output).toMatchObject({
+      id: matchId,
+      opponent: 'Grön IF',
+      format: 7,
+      formationId: '2-3-1',
+      periodCount: 2,
+      periodLengthSeconds: 1500,
+      status: 'scheduled',
+      joinCode: null,
+      endedAt: null,
+    });
+    expect(output['teamId']).toMatch(/^[0-9a-f-]{36}$/);
+    expect(output['createdAt']).toEqual(expect.any(String));
+    expect(output).not.toHaveProperty('joinTokenHash');
+  });
+
+  it('returnerar 404 för en saknad match och 400 för ett ogiltigt id', async () => {
+    const missing = await get(baseUrl, '/matches', { matchId: uuid() });
+    const invalid = await get(baseUrl, '/matches', { matchId: 'inte-ett-uuid' });
+
+    expect(missing.status).toBe(404);
+    expect(invalid.status).toBe(400);
+  });
+});
+
+describe('GET /matches/events', () => {
+  it('returnerar exakt händelserna efter sinceSeq i stigande seq-ordning', async () => {
+    const matchId = await createMatch();
+    const otherMatchId = await createMatch();
+    const events = [
+      periodStarted(matchId, uuid(), 1),
+      periodStarted(matchId, uuid(), 2),
+      periodStarted(matchId, uuid(), 3),
+    ];
+
+    for (const matchEvent of events) {
+      const response = await post(baseUrl, matchEvent);
+      expect(response.status).toBe(200);
+    }
+    expect((await post(baseUrl, periodStarted(otherMatchId))).status).toBe(200);
+
+    const response = await get(baseUrl, '/matches/events', {
+      matchId,
+      sinceSeq: '1',
+    });
+    const output = (await response.json()) as Array<{
+      seq: number;
+      receivedAt: string;
+      event: Record<string, unknown>;
+    }>;
+
+    expect(response.status).toBe(200);
+    expect(output.map(({ seq }) => seq)).toEqual([2, 3]);
+    expect(output.map(({ event }) => event)).toEqual(events.slice(1));
+    expect(output.every(({ receivedAt }) => !Number.isNaN(Date.parse(receivedAt)))).toBe(true);
+
+    const caughtUp = await get(baseUrl, '/matches/events', {
+      matchId,
+      sinceSeq: '3',
+    });
+    await expect(caughtUp.json()).resolves.toEqual([]);
+  });
+
+  it('returnerar 404 för en saknad match', async () => {
+    const response = await get(baseUrl, '/matches/events', {
+      matchId: uuid(),
+      sinceSeq: '0',
+    });
+
+    expect(response.status).toBe(404);
+  });
+
+  it('validerar matchId och ett icke-negativt heltal för sinceSeq', async () => {
+    const matchId = await createMatch();
+    const missingSeq = await get(baseUrl, '/matches/events', { matchId });
+    const negativeSeq = await get(baseUrl, '/matches/events', { matchId, sinceSeq: '-1' });
+    const decimalSeq = await get(baseUrl, '/matches/events', { matchId, sinceSeq: '1.5' });
+    const invalidMatch = await get(baseUrl, '/matches/events', {
+      matchId: 'nej',
+      sinceSeq: '0',
+    });
+
+    expect(missingSeq.status).toBe(400);
+    expect(negativeSeq.status).toBe(400);
+    expect(decimalSeq.status).toBe(400);
+    expect(invalidMatch.status).toBe(400);
+  });
+});
+
+describe('GET /time', () => {
+  it('returnerar serverns tid utan autentisering', async () => {
+    const response = await fetch(`${baseUrl}/time`);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ now: serverNow.toISOString() });
   });
 });
