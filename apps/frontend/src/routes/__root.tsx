@@ -24,6 +24,12 @@ function RootLayout() {
             >
               {t('nav.about')}
             </Link>
+            <Link
+              to="/debugg/serverklocka"
+              className="text-muted-foreground data-[status=active]:text-foreground flex min-h-touch items-center rounded-md px-3 text-sm font-medium"
+            >
+              {t('nav.debug')}
+            </Link>
           </nav>
         </header>
 
