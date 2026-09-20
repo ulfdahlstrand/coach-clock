@@ -8,7 +8,7 @@
     "start": "node dist/index.js",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
-    "lint": "echo '@coach-clock/backend: eslint kopplas in i #5'",
+    "lint": "eslint .",
     "test": "vitest run",
     "migrate": "node --import tsx/esm src/db/migrate.ts",
     "migrate:down": "node --import tsx/esm src/db/migrate.ts down",
@@ -24,9 +24,11 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@coach-clock/eslint-config": "*",
     "@coach-clock/tsconfig": "*",
     "@types/node": "^26.6.2",
     "@types/pg": "^8.23.1",
+    "eslint": "^9.0.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^4.1.11"

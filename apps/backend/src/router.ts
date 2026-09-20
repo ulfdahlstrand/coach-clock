@@ -8,7 +8,8 @@ import {
   updatePlayer,
 } from './procedures/teams.js';
 import type { ApiContext } from './procedures/matches.js';
-import { appendMatchEvent } from './procedures/matches.js';
+import { appendMatchEvent, getMatch, listMatchEvents } from './procedures/matches.js';
+import { getServerTime } from './procedures/time.js';
 
 const os = implement(contract).$context<ApiContext>();
 
@@ -24,8 +25,11 @@ export const router = os.router({
   createPlayer,
   updatePlayer,
   matches: {
+    get: getMatch,
     events: appendMatchEvent,
+    listEvents: listMatchEvents,
   },
+  time: getServerTime,
 });
 
 export type AppRouter = typeof router;

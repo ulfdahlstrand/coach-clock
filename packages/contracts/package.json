@@ -15,7 +15,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
-    "lint": "echo '@coach-clock/contracts: eslint kopplas in i #5'",
+    "lint": "eslint .",
     "test": "vitest run"
   },
   "dependencies": {
@@ -23,8 +23,10 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@coach-clock/eslint-config": "*",
     "@coach-clock/tsconfig": "*",
     "@types/node": "^26.6.2",
+    "eslint": "^9.0.0",
     "typescript": "^7.0.2",
     "vitest": "^4.1.11"
   }
