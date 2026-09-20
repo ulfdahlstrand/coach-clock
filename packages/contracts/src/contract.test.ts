@@ -4,8 +4,12 @@ import { z } from 'zod';
 import { contract } from './index.js';
 
 describe('contract', () => {
-  it('är tomt tills domänens endpoints landar', () => {
-    expect(Object.keys(contract)).toHaveLength(0);
+  it('exponerar append-proceduren', () => {
+    expect(isContractProcedure(contract.matches.events)).toBe(true);
+    expect(contract.matches.events['~orpc'].route).toMatchObject({
+      method: 'POST',
+      path: '/matches/events',
+    });
   });
 
   it('tar emot procedurer validerade med Zod 4', () => {
