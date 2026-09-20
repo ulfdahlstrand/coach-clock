@@ -12,6 +12,18 @@ describe('contract', () => {
     });
   });
 
+  it('exponerar läsprocedurerna på sina HTTP-routes', () => {
+    expect(contract.matches.get['~orpc'].route).toMatchObject({
+      method: 'GET',
+      path: '/matches',
+    });
+    expect(contract.matches.listEvents['~orpc'].route).toMatchObject({
+      method: 'GET',
+      path: '/matches/events',
+    });
+    expect(contract.time['~orpc'].route).toMatchObject({ method: 'GET', path: '/time' });
+  });
+
   it('tar emot procedurer validerade med Zod 4', () => {
     const extended = oc.router({
       ping: oc.input(z.object({ name: z.string() })).output(z.string()),

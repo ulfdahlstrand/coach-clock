@@ -42,7 +42,11 @@ describe('GET /openapi.json', () => {
         openapi: z.string().regex(/^3\.\d+\.\d+$/),
         info: z.object({ title: z.literal('coach-clock API'), version: z.literal('0.0.0') }),
         paths: z.object({
-          '/matches/events': z.object({ post: z.object({}).passthrough() }).passthrough(),
+          '/matches': z.object({ get: z.object({}).passthrough() }).passthrough(),
+          '/matches/events': z
+            .object({ get: z.object({}).passthrough(), post: z.object({}).passthrough() })
+            .passthrough(),
+          '/time': z.object({ get: z.object({}).passthrough() }).passthrough(),
         }),
       })
       .passthrough()
