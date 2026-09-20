@@ -7,6 +7,7 @@ TypeScript-monorepo. Projektbeskrivningen fylls i när omfattningen är satt.
 ```
 apps/          körbara applikationer (frontend, backend, CLI …)
 packages/      delade paket
+  contracts/   oRPC-kontrakt, Zod-scheman och ren domänlogik
   tsconfig/    delade TypeScript-konfigurationer (base / node / react)
 ```
 
