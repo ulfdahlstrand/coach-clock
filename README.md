@@ -5,7 +5,8 @@ TypeScript-monorepo. Projektbeskrivningen fylls i när omfattningen är satt.
 ## Struktur
 
 ```
-apps/          körbara applikationer (frontend, backend, CLI …)
+apps/          körbara applikationer
+  backend/     node:http + oRPC OpenAPIHandler, port 4002
 packages/      delade paket
   contracts/   oRPC-kontrakt, Zod-scheman och ren domänlogik
   tsconfig/    delade TypeScript-konfigurationer (base / node / react)
