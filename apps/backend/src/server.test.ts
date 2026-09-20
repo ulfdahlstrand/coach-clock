@@ -1,5 +1,6 @@
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import { createApiServer } from './server.js';
 
 let baseUrl: string;
@@ -36,14 +37,19 @@ describe('GET /health', () => {
 describe('GET /openapi.json', () => {
   it('svarar med ett giltigt OpenAPI-dokument genererat ur kontraktet', async () => {
     const response = await fetch(`${baseUrl}/openapi.json`);
-    const document = (await response.json()) as Record<string, unknown>;
+    const document = z
+      .object({
+        openapi: z.string().regex(/^3\.\d+\.\d+$/),
+        info: z.object({ title: z.literal('coach-clock API'), version: z.literal('0.0.0') }),
+        paths: z.object({
+          '/matches/events': z.object({ post: z.object({}).passthrough() }).passthrough(),
+        }),
+      })
+      .passthrough()
+      .safeParse(await response.json());
 
     expect(response.status).toBe(200);
-    expect(document['openapi']).toMatch(/^3\.\d+\.\d+$/);
-    expect(document['info']).toMatchObject({ title: 'coach-clock API', version: '0.0.0' });
-    expect(document['paths']).toMatchObject({
-      '/matches/events': { post: expect.any(Object) },
-    });
+    expect(document.success).toBe(true);
   });
 });
 
