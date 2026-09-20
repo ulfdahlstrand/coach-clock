@@ -5,17 +5,20 @@ import type { Kysely } from 'kysely';
 import { getDb } from './db/client.js';
 import type { Database } from './db/types.js';
 import type { Env } from './env.js';
+import { InProcessMatchEventBroadcast, type MatchEventBroadcast } from './match-event-broadcast.js';
 import { getOpenApiDocument } from './openapi.js';
 import type { RateLimiter } from './rate-limit.js';
 import type { JoinRateLimiter } from './rate-limit.js';
 import { defaultAppendRateLimiter, defaultJoinRateLimiter } from './rate-limit.js';
 import { router } from './router.js';
+import { handleMatchEventStream } from './sse.js';
 
 export interface ApiServerDependencies {
   readonly db?: Kysely<Database>;
   readonly rateLimiter?: RateLimiter;
   readonly joinRateLimiter?: JoinRateLimiter;
   readonly now?: () => Date;
+  readonly eventBroadcast?: MatchEventBroadcast;
 }
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
@@ -41,6 +44,7 @@ function createHandler(env: Env): OpenAPIHandler<{
   now: () => Date;
   response: ServerResponse;
   participantToken: string | undefined;
+  eventBroadcast: MatchEventBroadcast;
 }> {
   return new OpenAPIHandler(router, {
     plugins: [
@@ -72,6 +76,11 @@ async function route(
     return;
   }
 
+  if (req.method === 'GET' && url.pathname === '/matches/stream') {
+    await handleMatchEventStream(req, res, url, dependencies);
+    return;
+  }
+
   const { matched } = await handler.handle(req, res, {
     context: {
       ...dependencies,
@@ -93,6 +102,7 @@ export function createApiServer(env: Env, supplied: ApiServerDependencies = {}):
     rateLimiter: supplied.rateLimiter ?? defaultAppendRateLimiter,
     joinRateLimiter: supplied.joinRateLimiter ?? defaultJoinRateLimiter,
     now: supplied.now ?? (() => new Date()),
+    eventBroadcast: supplied.eventBroadcast ?? new InProcessMatchEventBroadcast(),
   };
 
   return createServer((req, res) => {
