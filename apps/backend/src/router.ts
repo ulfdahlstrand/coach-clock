@@ -7,8 +7,10 @@ import {
   listTeams,
   updatePlayer,
 } from './procedures/teams.js';
+import type { ApiContext } from './procedures/matches.js';
+import { appendMatchEvent } from './procedures/matches.js';
 
-const os = implement(contract);
+const os = implement(contract).$context<ApiContext>();
 
 /**
  * Ren bindningstabell: kontraktets form till vänster, implementationen till höger.
@@ -21,6 +23,9 @@ export const router = os.router({
   listPlayers,
   createPlayer,
   updatePlayer,
+  matches: {
+    events: appendMatchEvent,
+  },
 });
 
 export type AppRouter = typeof router;

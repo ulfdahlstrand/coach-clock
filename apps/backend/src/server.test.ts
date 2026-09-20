@@ -42,6 +42,7 @@ describe('GET /openapi.json', () => {
     expect(document['openapi']).toMatch(/^3\.\d+\.\d+$/);
     expect(document['info']).toMatchObject({ title: 'coach-clock API', version: '0.0.0' });
     expect(Object.keys(document['paths'] ?? {}).sort()).toEqual([
+      '/matches/events',
       '/players',
       '/players/update',
       '/teams',

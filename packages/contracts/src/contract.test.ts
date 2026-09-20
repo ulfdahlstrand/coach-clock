@@ -4,18 +4,24 @@ import { z } from 'zod';
 import { contract, createPlayerInputSchema, updatePlayerInputSchema } from './index.js';
 
 describe('contract', () => {
-  it('exponerar lag- och spelarprocedurerna', () => {
+  it('exponerar lag-, spelar- och append-procedurerna', () => {
     expect(Object.keys(contract)).toEqual([
       'listTeams',
       'createTeam',
       'listPlayers',
       'createPlayer',
       'updatePlayer',
+      'matches',
     ]);
 
-    for (const procedure of Object.values(contract)) {
+    for (const procedure of Object.values(contract).filter(isContractProcedure)) {
       expect(isContractProcedure(procedure)).toBe(true);
     }
+    expect(isContractProcedure(contract.matches.events)).toBe(true);
+    expect(contract.matches.events['~orpc'].route).toMatchObject({
+      method: 'POST',
+      path: '/matches/events',
+    });
   });
 
   it('tar emot procedurer validerade med Zod 4', () => {

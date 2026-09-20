@@ -1,4 +1,6 @@
 import { oc } from '@orpc/contract';
+import { z } from 'zod';
+import { matchEventSchema } from './events.js';
 import {
   createPlayerInputSchema,
   createPlayerOutputSchema,
@@ -11,6 +13,26 @@ import {
   updatePlayerInputSchema,
   updatePlayerOutputSchema,
 } from './teams.js';
+
+/** Svaret är samma oavsett om händelsen skapades eller redan fanns. */
+export const appendMatchEventOutputSchema = z.object({
+  eventId: z.uuid(),
+  matchId: z.uuid(),
+  seq: z.int().positive(),
+  receivedAt: z.iso.datetime(),
+});
+
+export type AppendMatchEventOutput = z.infer<typeof appendMatchEventOutputSchema>;
+
+export const appendMatchEventContract = oc
+  .route({
+    method: 'POST',
+    path: '/matches/events',
+    operationId: 'appendMatchEvent',
+    summary: 'Lägg till en händelse i en matchlogg',
+  })
+  .input(matchEventSchema)
+  .output(appendMatchEventOutputSchema);
 
 /**
  * Rotkontraktet för coach-clock.
@@ -39,6 +61,9 @@ export const contract = oc.router({
     .route({ method: 'POST', path: '/players/update' })
     .input(updatePlayerInputSchema)
     .output(updatePlayerOutputSchema),
+  matches: {
+    events: appendMatchEventContract,
+  },
 });
 
 export type AppRouter = typeof contract;

@@ -1,10 +1,10 @@
 import { contract } from '@coach-clock/contracts';
 import { ORPCError, implement } from '@orpc/server';
 import type { Kysely, Updateable } from 'kysely';
-import { getDb } from '../db/client.js';
 import { toPlayer, toTeam, type Database, type PlayerTable } from '../db/types.js';
+import type { ApiContext } from './matches.js';
 
-const os = implement(contract);
+const os = implement(contract).$context<ApiContext>();
 
 async function requireTeam(db: Kysely<Database>, teamId: string): Promise<void> {
   const team = await db
@@ -18,8 +18,8 @@ async function requireTeam(db: Kysely<Database>, teamId: string): Promise<void> 
   }
 }
 
-export const listTeams = os.listTeams.handler(async () => {
-  const rows = await getDb()
+export const listTeams = os.listTeams.handler(async ({ context }) => {
+  const rows = await context.db
     .selectFrom('teams')
     .selectAll()
     .orderBy('created_at')
@@ -29,8 +29,8 @@ export const listTeams = os.listTeams.handler(async () => {
   return rows.map(toTeam);
 });
 
-export const createTeam = os.createTeam.handler(async ({ input }) => {
-  const row = await getDb()
+export const createTeam = os.createTeam.handler(async ({ input, context }) => {
+  const row = await context.db
     .insertInto('teams')
     .values({ name: input.name })
     .returningAll()
@@ -39,8 +39,8 @@ export const createTeam = os.createTeam.handler(async ({ input }) => {
   return toTeam(row);
 });
 
-export const listPlayers = os.listPlayers.handler(async ({ input }) => {
-  const db = getDb();
+export const listPlayers = os.listPlayers.handler(async ({ input, context }) => {
+  const db = context.db;
   await requireTeam(db, input.teamId);
 
   const rows = await db
@@ -55,8 +55,8 @@ export const listPlayers = os.listPlayers.handler(async ({ input }) => {
   return rows.map(toPlayer);
 });
 
-export const createPlayer = os.createPlayer.handler(async ({ input }) => {
-  const db = getDb();
+export const createPlayer = os.createPlayer.handler(async ({ input, context }) => {
+  const db = context.db;
   await requireTeam(db, input.teamId);
 
   const row = await db
@@ -73,7 +73,7 @@ export const createPlayer = os.createPlayer.handler(async ({ input }) => {
   return toPlayer(row);
 });
 
-export const updatePlayer = os.updatePlayer.handler(async ({ input }) => {
+export const updatePlayer = os.updatePlayer.handler(async ({ input, context }) => {
   const updates: Updateable<PlayerTable> = {};
 
   if (input.name !== undefined) updates.name = input.name;
@@ -81,7 +81,7 @@ export const updatePlayer = os.updatePlayer.handler(async ({ input }) => {
   if (input.isGoalkeeper !== undefined) updates.is_goalkeeper = input.isGoalkeeper;
   if (input.archived !== undefined) updates.archived = input.archived;
 
-  const row = await getDb()
+  const row = await context.db
     .updateTable('players')
     .set(updates)
     .where('id', '=', input.playerId)
