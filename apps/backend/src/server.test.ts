@@ -41,9 +41,11 @@ describe('GET /openapi.json', () => {
     expect(response.status).toBe(200);
     expect(document['openapi']).toMatch(/^3\.\d+\.\d+$/);
     expect(document['info']).toMatchObject({ title: 'coach-clock API', version: '0.0.0' });
-    // Kontraktet är tomt än så länge, och `paths` är valfri i OpenAPI 3.1 —
-    // finns den ska den vara tom, inte innehålla påhittade endpoints.
-    expect(Object.keys(document['paths'] ?? {})).toHaveLength(0);
+    expect(Object.keys(document['paths'] ?? {}).sort()).toEqual([
+      '/players',
+      '/players/update',
+      '/teams',
+    ]);
   });
 });
 
