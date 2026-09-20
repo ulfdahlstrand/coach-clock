@@ -4,3 +4,6 @@ build/
 coverage/
 .turbo/
 package-lock.json
+
+# Genereras av TanStack Router; filens egen header säger åt oss att inte formatera den.
+apps/frontend/src/route-tree.gen.ts

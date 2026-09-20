@@ -1,0 +1,12 @@
+{
+  "extends": "@coach-clock/tsconfig/react.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["vite/client", "node"],
+    // TypeScript 7 har tagit bort baseUrl — paths anges relativt den här filen.
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts", "vitest.config.ts"]
+}

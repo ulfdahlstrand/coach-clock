@@ -1,0 +1,24 @@
+{
+  "app": {
+    "name": "coach-clock",
+    "tagline": "Matchklocka för ungdomsfotboll"
+  },
+  "nav": {
+    "start": "Start",
+    "about": "Om appen"
+  },
+  "start": {
+    "heading": "Matchklockan är redo",
+    "body": "Skalet står. Matchvy, trupp och händelser kommer i kommande steg.",
+    "cta": "Läs om appen"
+  },
+  "about": {
+    "heading": "Om appen",
+    "body": "coach-clock körs på telefonen vid sidlinjen: stora träffytor, allt nåbart med en tumme och en matchvy som tål november.",
+    "back": "Tillbaka till start"
+  },
+  "error": {
+    "notFound": "Sidan finns inte",
+    "notFoundBody": "Adressen leder ingenstans. Gå tillbaka till start."
+  }
+}

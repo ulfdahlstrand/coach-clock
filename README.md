@@ -7,6 +7,7 @@ TypeScript-monorepo. Projektbeskrivningen fylls i när omfattningen är satt.
 ```
 apps/          körbara applikationer
   backend/     node:http + oRPC OpenAPIHandler, port 4002
+  frontend/    Vite + React + TanStack Router/Query + Tailwind v4, port 5174
 docker/        docker-compose för lokal Postgres (port 5434)
 packages/      delade paket
   contracts/   oRPC-kontrakt, Zod-scheman och ren domänlogik
