@@ -5,6 +5,7 @@
   },
   "nav": {
     "start": "Start",
+    "teams": "Lag",
     "about": "Om appen",
     "debug": "Debugg"
   },
@@ -28,6 +29,38 @@
     "rtt": "Snabbaste svarstid",
     "samples": "Mätningar",
     "back": "Tillbaka till start"
+  },
+  "teams": {
+    "eyebrow": "Förberedelse",
+    "heading": "Dina lag",
+    "body": "Lägg in truppen en gång och använd den i varje match.",
+    "newTeamLabel": "Lagnamn",
+    "newTeamPlaceholder": "Till exempel F11 Blå",
+    "create": "Skapa lag",
+    "createError": "Kunde inte skapa laget. Försök igen.",
+    "savedHeading": "Sparade lag",
+    "loading": "Hämtar lag…",
+    "loadError": "Kunde inte hämta lagen.",
+    "empty": "Inga lag ännu. Skapa ditt första lag ovan."
+  },
+  "team": {
+    "back": "Till alla lag",
+    "heading": "Trupp",
+    "body": "Håll spelarnas namn, nummer och målvaktsroll redo inför match.",
+    "addPlayer": "Lägg till spelare",
+    "playerName": "Namn",
+    "number": "Nummer",
+    "goalkeeper": "Målvakt",
+    "archived": "Arkiverad",
+    "createError": "Kunde inte lägga till spelaren. Försök igen.",
+    "updateError": "Kunde inte spara spelaren. Försök igen.",
+    "loadError": "Kunde inte hämta truppen.",
+    "loading": "Hämtar trupp…",
+    "roster_one": "{{count}} aktiv spelare",
+    "roster_other": "{{count}} aktiva spelare",
+    "archivedHeading": "Arkiverade spelare",
+    "save": "Spara spelare",
+    "saveArchived": "Spara arkiverad spelare"
   },
   "error": {
     "notFound": "Sidan finns inte",
