@@ -74,11 +74,29 @@ export interface FileRoutesById {
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/lag' | '/om' | '/debugg/serverklocka' | '/lag/$teamId' | '/matches/new'
+  fullPaths:
+    | '/'
+    | '/lag'
+    | '/om'
+    | '/debugg/serverklocka'
+    | '/lag/$teamId'
+    | '/matches/new'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/lag' | '/om' | '/debugg/serverklocka' | '/lag/$teamId' | '/matches/new'
+  to:
+    | '/'
+    | '/lag'
+    | '/om'
+    | '/debugg/serverklocka'
+    | '/lag/$teamId'
+    | '/matches/new'
   id:
-    '__root__' | '/' | '/lag' | '/om' | '/debugg/serverklocka' | '/lag_/$teamId' | '/matches/new'
+    | '__root__'
+    | '/'
+    | '/lag'
+    | '/om'
+    | '/debugg/serverklocka'
+    | '/lag_/$teamId'
+    | '/matches/new'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
