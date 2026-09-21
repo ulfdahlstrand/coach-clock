@@ -23,6 +23,16 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
+function participantTokenFromCookie(cookie: string | undefined): string | undefined {
+  if (cookie === undefined) return undefined;
+  const prefix = 'coach_clock_participant=';
+  const value = cookie
+    .split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(prefix));
+  return value?.slice(prefix.length) || undefined;
+}
+
 function createHandler(env: Env): OpenAPIHandler<{
   db: Kysely<Database>;
   clientId: string;
@@ -30,6 +40,7 @@ function createHandler(env: Env): OpenAPIHandler<{
   joinRateLimiter: JoinRateLimiter;
   now: () => Date;
   response: ServerResponse;
+  participantToken: string | undefined;
 }> {
   return new OpenAPIHandler(router, {
     plugins: [
@@ -66,6 +77,7 @@ async function route(
       ...dependencies,
       clientId: req.socket.remoteAddress ?? 'unknown',
       response: res,
+      participantToken: participantTokenFromCookie(req.headers.cookie),
     },
   });
 

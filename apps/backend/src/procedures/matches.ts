@@ -1,4 +1,10 @@
-import { contract, parseMatchEvent, type MatchEvent } from '@coach-clock/contracts';
+import {
+  canAppendMatchEvent,
+  contract,
+  parseMatchEvent,
+  type MatchEvent,
+} from '@coach-clock/contracts';
+import { createHash } from 'node:crypto';
 import { ORPCError, implement } from '@orpc/server';
 import type { Kysely } from 'kysely';
 import { toMatch, type Database, type JsonObject } from '../db/types.js';
@@ -16,6 +22,8 @@ export interface ApiContext {
   readonly joinRateLimiter: JoinRateLimiter;
   readonly now: () => Date;
   readonly response: ServerResponse;
+  /** Klartexttoken från den HttpOnly-cookie som #16 utfärdar. */
+  readonly participantToken: string | undefined;
 }
 
 const os = implement(contract).$context<ApiContext>();
@@ -83,13 +91,36 @@ export const listMatchEvents = os.matches.listEvents.handler(async ({ input, con
 
 export const appendMatchEvent = os.matches.events.handler(async ({ input, context }) => {
   const rateLimitKey = `${context.clientId}:${input.matchId}`;
-  const rateLimitAllowsWrite = context.rateLimiter.consume(rateLimitKey);
 
   if (Date.parse(input.at) > context.now().getTime() + MAX_EVENT_FUTURE_SKEW_MS) {
     throw new ORPCError('BAD_REQUEST', {
       message: 'Händelsens at ligger orimligt långt före serverns tid',
     });
   }
+
+  if (context.participantToken === undefined) {
+    throw new ORPCError('UNAUTHORIZED', { message: 'En deltagarsession krävs för att skriva' });
+  }
+
+  const participant = await context.db
+    .selectFrom('participants')
+    .select(['id', 'role'])
+    .where('match_id', '=', input.matchId)
+    .where('token_hash', '=', createHash('sha256').update(context.participantToken).digest('hex'))
+    .executeTakeFirst();
+
+  if (participant === undefined) {
+    throw new ORPCError('UNAUTHORIZED', {
+      message: 'Deltagarsessionen gäller inte den här matchen',
+    });
+  }
+  if (!canAppendMatchEvent(participant.role, input.type)) {
+    throw new ORPCError('FORBIDDEN', { message: 'Din roll får inte skriva den här händelsen' });
+  }
+
+  // En ogiltig eller otillåten session ska inte kunna förbruka kvoten för en
+  // riktig deltagare på samma IP-adress och match.
+  const rateLimitAllowsWrite = context.rateLimiter.consume(rateLimitKey);
 
   return context.db.transaction().execute(async (trx) => {
     // Alla appends för samma match tar samma radlås. Därmed kan bara en
@@ -143,7 +174,7 @@ export const appendMatchEvent = os.matches.events.handler(async ({ input, contex
         type: input.type,
         payload: eventPayload(input),
         at: new Date(input.at),
-        by_participant_id: null,
+        by_participant_id: participant.id,
       })
       .returning(['event_id', 'match_id', 'seq', 'received_at'])
       .executeTakeFirstOrThrow();
