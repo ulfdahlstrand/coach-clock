@@ -26,7 +26,10 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 function participantTokenFromCookie(cookie: string | undefined): string | undefined {
   if (cookie === undefined) return undefined;
   const prefix = 'coach_clock_participant=';
-  const value = cookie.split(';').map((part) => part.trim()).find((part) => part.startsWith(prefix));
+  const value = cookie
+    .split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(prefix));
   return value?.slice(prefix.length) || undefined;
 }
 

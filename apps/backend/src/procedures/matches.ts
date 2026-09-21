@@ -110,7 +110,9 @@ export const appendMatchEvent = os.matches.events.handler(async ({ input, contex
     .executeTakeFirst();
 
   if (participant === undefined) {
-    throw new ORPCError('UNAUTHORIZED', { message: 'Deltagarsessionen gäller inte den här matchen' });
+    throw new ORPCError('UNAUTHORIZED', {
+      message: 'Deltagarsessionen gäller inte den här matchen',
+    });
   }
   if (!canAppendMatchEvent(participant.role, input.type)) {
     throw new ORPCError('FORBIDDEN', { message: 'Din roll får inte skriva den här händelsen' });
