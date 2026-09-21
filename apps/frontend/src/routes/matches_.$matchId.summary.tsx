@@ -1,7 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, createFileRoute } from '@tanstack/react-router';
+import { deriveMatchState } from '@coach-clock/contracts';
 import { CheckCircle2Icon, Share2Icon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { MatchConflictPanel } from '@/components/match-conflict-panel';
 import { apiClient } from '@/lib/api-client';
 import { createMatchSummary, formatMatchDuration, roleLabel } from '@/lib/match-summary';
 
@@ -22,7 +24,9 @@ function SummaryPage() {
   });
   const eventLog = events.data?.map((item) => item.event) ?? [];
   const finishedAt = match.data?.endedAt ?? new Date().toISOString();
-  const summary = createMatchSummary(eventLog, new Date(finishedAt));
+  const finishedAtDate = new Date(finishedAt);
+  const summary = createMatchSummary(eventLog, finishedAtDate);
+  const matchState = deriveMatchState(eventLog, finishedAtDate);
   const title = match.data ? `Match mot ${match.data.opponent}` : 'Matchsammanfattning';
 
   return (
@@ -44,6 +48,8 @@ function SummaryPage() {
           Kunde inte hämta matchens sammanfattning.
         </p>
       ) : null}
+
+      <MatchConflictPanel state={matchState} />
 
       <div className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
         <div className="flex items-start gap-3">
