@@ -52,10 +52,19 @@ function unlockAudio(): void {
 }
 
 function MatchPage() {
-  const { matchId } = Route.useParams();
   const isSummaryRoute = useRouterState({
     select: (state) => state.location.pathname.endsWith('/summary'),
   });
+
+  // File-based routing makes /summary a child of the active match route. The
+  // parent intentionally stays invisible there so the share card is printable
+  // and does not open an unnecessary live SSE connection.
+  if (isSummaryRoute) return <Outlet />;
+  return <LiveMatchPage />;
+}
+
+function LiveMatchPage() {
+  const { matchId } = Route.useParams();
   const queryClient = useQueryClient();
   const [tick, setTick] = useState(0);
   const [optimisticEvents, setOptimisticEvents] = useState<readonly MatchEvent[]>([]);
@@ -153,10 +162,6 @@ function MatchPage() {
     clock?.periodNumber === null || clock?.periodNumber === undefined
       ? 'Redo att starta'
       : `Period ${clock.periodNumber}${match.data ? ` av ${match.data.periodCount}` : ''}`;
-
-  // File-based routing makes /summary a child of the active match route. The
-  // parent intentionally stays invisible there so the share card is printable.
-  if (isSummaryRoute) return <Outlet />;
 
   return (
     <section className="dark -mx-4 -my-8 min-h-[calc(100dvh-4.5rem)] bg-background px-4 py-7 text-foreground">
