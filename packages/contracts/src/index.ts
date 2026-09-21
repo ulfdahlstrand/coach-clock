@@ -1,4 +1,5 @@
 export * from './contract.js';
+export * from './authorization.js';
 export * from './events.js';
 export * from './fairness.js';
 export * from './formations.js';
