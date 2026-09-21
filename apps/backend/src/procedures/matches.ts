@@ -1,9 +1,4 @@
-import {
-  canAppendMatchEvent,
-  contract,
-  FORMATIONS,
-  type MatchEvent,
-} from '@coach-clock/contracts';
+import { canAppendMatchEvent, contract, FORMATIONS, type MatchEvent } from '@coach-clock/contracts';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { ORPCError, implement } from '@orpc/server';
 import type { ServerResponse } from 'node:http';
