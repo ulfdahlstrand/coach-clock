@@ -43,7 +43,10 @@ const defaultMaxRetryDelayMs = 5 * 60_000;
  * an idempotency key, which lets a retry safely receive its already-created
  * sequence number after the connection drops during a response.
  */
-export function withClientEventId<T extends MatchEvent>(event: Omit<T, 'eventId'>, eventId = crypto.randomUUID()): T {
+export function withClientEventId<T extends MatchEvent>(
+  event: Omit<T, 'eventId'>,
+  eventId = crypto.randomUUID(),
+): T {
   return { ...event, eventId } as T;
 }
 
@@ -99,7 +102,8 @@ export async function drainOutbox(
 
   const sent: AppendMatchEventOutput[] = [];
   const entries = [...(await repository.list())].sort(
-    (left, right) => left.queuedAt - right.queuedAt || left.event.eventId.localeCompare(right.event.eventId),
+    (left, right) =>
+      left.queuedAt - right.queuedAt || left.event.eventId.localeCompare(right.event.eventId),
   );
 
   for (const entry of entries) {
@@ -109,7 +113,10 @@ export async function drainOutbox(
 
     try {
       const acknowledged = await sender(entry.event);
-      if (acknowledged.eventId !== entry.event.eventId || acknowledged.matchId !== entry.event.matchId) {
+      if (
+        acknowledged.eventId !== entry.event.eventId ||
+        acknowledged.matchId !== entry.event.matchId
+      ) {
         throw new Error('Servern bekräftade inte rätt händelse.');
       }
       await repository.delete(entry.event.eventId);

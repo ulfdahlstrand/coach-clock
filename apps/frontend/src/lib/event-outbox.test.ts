@@ -24,7 +24,9 @@ function event(): MatchEvent {
   };
 }
 
-function memoryRepository(initial: readonly OutboxEntry[] = []): OutboxRepository & { entries: Map<string, OutboxEntry> } {
+function memoryRepository(
+  initial: readonly OutboxEntry[] = [],
+): OutboxRepository & { entries: Map<string, OutboxEntry> } {
   const entries = new Map(initial.map((entry) => [entry.event.eventId, entry]));
   return {
     entries,
@@ -48,7 +50,9 @@ describe('event outbox', () => {
 
   test('acknowledges a duplicate server response and removes the durable entry', async () => {
     const item = event();
-    const repository = memoryRepository([{ event: item, attempts: 0, nextAttemptAt: 0, queuedAt: 1 }]);
+    const repository = memoryRepository([
+      { event: item, attempts: 0, nextAttemptAt: 0, queuedAt: 1 },
+    ]);
     const send = vi.fn().mockResolvedValue({
       eventId: item.eventId,
       matchId: item.matchId,
@@ -79,16 +83,24 @@ describe('event outbox', () => {
     });
 
     expect(result).toMatchObject({ failedEventId: first.eventId, nextAttemptAt: 1_200 });
-    expect(repository.entries.get(first.eventId)).toMatchObject({ attempts: 2, nextAttemptAt: 1_200 });
+    expect(repository.entries.get(first.eventId)).toMatchObject({
+      attempts: 2,
+      nextAttemptAt: 1_200,
+    });
     expect(send).toHaveBeenCalledTimes(1);
   });
 
   test('leaves a deferred retry untouched until its retry time', async () => {
     const item = event();
-    const repository = memoryRepository([{ event: item, attempts: 1, nextAttemptAt: 100, queuedAt: 1 }]);
+    const repository = memoryRepository([
+      { event: item, attempts: 1, nextAttemptAt: 100, queuedAt: 1 },
+    ]);
     const send = vi.fn();
 
-    await expect(drainOutbox(repository, send, { now: () => 99 })).resolves.toEqual({ sent: [], nextAttemptAt: 100 });
+    await expect(drainOutbox(repository, send, { now: () => 99 })).resolves.toEqual({
+      sent: [],
+      nextAttemptAt: 100,
+    });
     expect(send).not.toHaveBeenCalled();
   });
 
@@ -109,6 +121,8 @@ describe('event outbox', () => {
     void ignoredEventId;
     const created = withClientEventId(withoutEventId as never);
     expect(created).toMatchObject(withoutEventId);
-    expect(created.eventId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+    expect(created.eventId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
   });
 });
