@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Link, createFileRoute } from '@tanstack/react-router';
+import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { PlayIcon } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
@@ -36,6 +36,7 @@ function assignFirstPlayers(formation: Formation, playerIds: readonly string[]) 
 }
 
 function MatchSetupPage() {
+  const navigate = useNavigate();
   const form = useForm<CreateMatchFormValues>({
     resolver: createMatchResolver,
     defaultValues: initial,
@@ -59,10 +60,9 @@ function MatchSetupPage() {
     FORMATIONS.find((candidate) => candidate.id === formationId) ?? formationsFor(format)[0];
   const create = useMutation({
     mutationFn: (values: CreateMatchFormValues) => apiClient.matches.create(values),
-    onSuccess: (match, values) => {
+    onSuccess: async (match, values) => {
       saveMatchSetupDefaults(values.teamId, values);
-      // Matchvyn kommer i nästa steg; anropet har redan startat period 1 på servern.
-      return match;
+      await navigate({ to: '/matches/$matchId/share', params: { matchId: match.id } });
     },
   });
 

@@ -45,6 +45,7 @@ describe('GET /openapi.json', () => {
           '/matches': z.object({ get: z.object({}).passthrough() }).passthrough(),
           '/matches/share': z.object({ post: z.object({}).passthrough() }).passthrough(),
           '/matches/join': z.object({ post: z.object({}).passthrough() }).passthrough(),
+          '/matches/participants': z.object({ get: z.object({}).passthrough() }).passthrough(),
           '/matches/events': z
             .object({ get: z.object({}).passthrough(), post: z.object({}).passthrough() })
             .passthrough(),
