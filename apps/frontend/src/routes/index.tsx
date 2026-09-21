@@ -12,9 +12,9 @@ function StartPage() {
       <h1 className="text-2xl font-semibold tracking-tight">{t('start.heading')}</h1>
       <p className="text-muted-foreground text-sm">{t('start.body')}</p>
       <Button asChild size="lg" className="min-h-touch w-full">
-        <Link to="/om">
+        <Link to="/matches/new">
           <TimerIcon aria-hidden="true" />
-          {t('start.cta')}
+          Starta ny match
         </Link>
       </Button>
     </section>

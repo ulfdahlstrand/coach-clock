@@ -19,6 +19,11 @@ describe('contract', () => {
       expect(isContractProcedure(procedure)).toBe(true);
     }
     expect(isContractProcedure(contract.matches.events)).toBe(true);
+    expect(isContractProcedure(contract.matches.create)).toBe(true);
+    expect(contract.matches.create['~orpc'].route).toMatchObject({
+      method: 'POST',
+      path: '/matches',
+    });
     expect(contract.matches.events['~orpc'].route).toMatchObject({
       method: 'POST',
       path: '/matches/events',
