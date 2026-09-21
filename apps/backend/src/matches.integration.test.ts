@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import type { SequencedMatchEvent } from '@coach-clock/contracts';
 import { NO_MIGRATIONS } from 'kysely/migration';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import { createDb } from './db/client.js';
 import { createMigrator, migrateToLatest } from './db/migrator.js';
 import { readEnv } from './env.js';
@@ -138,9 +139,16 @@ async function postTo(url: string, path: string, body: unknown): Promise<Respons
   });
 }
 
-function get(url: string, path: string, query: Record<string, string>): Promise<Response> {
+function get(
+  url: string,
+  path: string,
+  query: Record<string, string>,
+  token?: string,
+): Promise<Response> {
   const search = new URLSearchParams(query);
-  return fetch(`${url}${path}?${search.toString()}`);
+  return fetch(`${url}${path}?${search.toString()}`, {
+    headers: token === undefined ? {} : { cookie: `coach_clock_participant=${token}` },
+  });
 }
 
 type SseMessage = {
@@ -544,6 +552,32 @@ describe('POST /matches/share och /matches/join', () => {
     expect(bad.status).toBe(404);
     expect(blockedSameCode.status).toBe(429);
     expect(blockedSameIp.status).toBe(429);
+  });
+});
+
+describe('GET /matches/participants', () => {
+  it('visar roller och senast sedd för en deltagare med rätt cookie', async () => {
+    const matchId = await createMatch();
+    const owner = await createParticipant(matchId, 'owner');
+    await createParticipant(matchId, 'viewer');
+
+    const response = await get(baseUrl, '/matches/participants', { matchId }, owner.token);
+    expect(response.status).toBe(200);
+    const output = z
+      .array(z.object({ displayName: z.string(), role: z.string(), lastSeenAt: z.iso.datetime() }))
+      .parse(await response.json());
+    expect(output).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ displayName: 'owner test', role: 'owner' }),
+        expect.objectContaining({ displayName: 'viewer test', role: 'viewer' }),
+      ]),
+    );
+  });
+
+  it('skyddar deltagarlistan utan matchens deltagarcookie', async () => {
+    const matchId = await createMatch();
+    const response = await get(baseUrl, '/matches/participants', { matchId });
+    expect(response.status).toBe(401);
   });
 });
 

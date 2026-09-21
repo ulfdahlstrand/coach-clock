@@ -60,9 +60,9 @@ function MatchSetupPage() {
     FORMATIONS.find((candidate) => candidate.id === formationId) ?? formationsFor(format)[0];
   const create = useMutation({
     mutationFn: (values: CreateMatchFormValues) => apiClient.matches.create(values),
-    onSuccess: (match, values) => {
+    onSuccess: async (match, values) => {
       saveMatchSetupDefaults(values.teamId, values);
-      void navigate({ to: '/matches/$matchId', params: { matchId: match.id } });
+      await navigate({ to: '/matches/$matchId/share', params: { matchId: match.id } });
     },
   });
 

@@ -52,14 +52,14 @@ function unlockAudio(): void {
 }
 
 function MatchPage() {
-  const isSummaryRoute = useRouterState({
-    select: (state) => state.location.pathname.endsWith('/summary'),
+  const { matchId } = Route.useParams();
+  const isChildRoute = useRouterState({
+    select: (state) => state.location.pathname !== `/matches/${matchId}`,
   });
 
-  // File-based routing makes /summary a child of the active match route. The
-  // parent intentionally stays invisible there so the share card is printable
-  // and does not open an unnecessary live SSE connection.
-  if (isSummaryRoute) return <Outlet />;
+  // Share and summary are children of the active match route. The parent stays
+  // invisible there so neither screen opens an unnecessary live SSE connection.
+  if (isChildRoute) return <Outlet />;
   return <LiveMatchPage />;
 }
 

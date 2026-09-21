@@ -39,6 +39,10 @@ describe('contract', () => {
       method: 'GET',
       path: '/matches/events',
     });
+    expect(contract.matches.participants['~orpc'].route).toMatchObject({
+      method: 'GET',
+      path: '/matches/participants',
+    });
     expect(contract.time['~orpc'].route).toMatchObject({ method: 'GET', path: '/time' });
   });
 

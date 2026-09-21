@@ -50,6 +50,19 @@ test('/matches/$matchId/summary renderar en delningsbar matchsammantällning', a
   expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Matchsammanfattning');
 });
 
+test('/join/$token visar den telefonanpassade join-skärmen', async () => {
+  await renderAt('/join/K7M2QX');
+  expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Gå med vid sidlinjen');
+  expect(screen.getByRole('button', { name: 'Gå med i matchen' })).toBeDefined();
+});
+
+test('/matches/$matchId/share visar kod och deltagarlistan', async () => {
+  await renderAt('/matches/00000000-0000-4000-8000-000000000001/share');
+  expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Bjud in en medtränare');
+  expect(screen.getByLabelText('Anslutningskod')).toBeDefined();
+  expect(screen.getByRole('list', { name: 'Deltagare i matchen' })).toBeDefined();
+});
+
 test('okänd adress ger notFound-vyn', async () => {
   await renderAt('/finns-inte');
 

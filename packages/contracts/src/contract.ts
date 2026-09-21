@@ -117,6 +117,24 @@ export const joinMatchContract = oc
     }),
   );
 
+/** Delas bara med en deltagare i matchen; tokenhashar lämnar aldrig servern. */
+export const matchParticipantSchema = z.object({
+  id: z.uuid(),
+  displayName: z.string(),
+  role: z.enum(['owner', 'coach', 'referee', 'viewer']),
+  lastSeenAt: z.iso.datetime(),
+});
+
+export const listMatchParticipantsContract = oc
+  .route({
+    method: 'GET',
+    path: '/matches/participants',
+    operationId: 'listMatchParticipants',
+    summary: 'Visa deltagare som är anslutna till en match',
+  })
+  .input(z.object({ matchId: matchIdSchema }))
+  .output(z.array(matchParticipantSchema));
+
 /** Svaret är samma oavsett om händelsen skapades eller redan fanns. */
 export const appendMatchEventOutputSchema = z.object({
   eventId: z.uuid(),
@@ -205,6 +223,7 @@ export const contract = oc.router({
     get: getMatchContract,
     share: createMatchShareContract,
     join: joinMatchContract,
+    participants: listMatchParticipantsContract,
     events: appendMatchEventContract,
     listEvents: listMatchEventsContract,
   },
