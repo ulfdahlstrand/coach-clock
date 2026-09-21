@@ -15,6 +15,7 @@ import { Route as OmRouteImport } from './routes/om'
 import { Route as DebuggServerklockaRouteImport } from './routes/debugg.serverklocka'
 import { Route as LagTeamIdRouteImport } from './routes/lag_.$teamId'
 import { Route as MatchesNewRouteImport } from './routes/matches.new'
+import { Route as MatchesMatchIdSummaryRouteImport } from './routes/matches_.$matchId.summary'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -46,6 +47,11 @@ const MatchesNewRoute = MatchesNewRouteImport.update({
   path: '/matches/new',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MatchesMatchIdSummaryRoute = MatchesMatchIdSummaryRouteImport.update({
+  id: '/matches_/$matchId/summary',
+  path: '/matches/$matchId/summary',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -54,6 +60,7 @@ export interface FileRoutesByFullPath {
   '/debugg/serverklocka': typeof DebuggServerklockaRoute
   '/lag/$teamId': typeof LagTeamIdRoute
   '/matches/new': typeof MatchesNewRoute
+  '/matches/$matchId/summary': typeof MatchesMatchIdSummaryRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -62,6 +69,7 @@ export interface FileRoutesByTo {
   '/debugg/serverklocka': typeof DebuggServerklockaRoute
   '/lag/$teamId': typeof LagTeamIdRoute
   '/matches/new': typeof MatchesNewRoute
+  '/matches/$matchId/summary': typeof MatchesMatchIdSummaryRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -71,6 +79,7 @@ export interface FileRoutesById {
   '/debugg/serverklocka': typeof DebuggServerklockaRoute
   '/lag_/$teamId': typeof LagTeamIdRoute
   '/matches/new': typeof MatchesNewRoute
+  '/matches_/$matchId/summary': typeof MatchesMatchIdSummaryRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -81,6 +90,7 @@ export interface FileRouteTypes {
     | '/debugg/serverklocka'
     | '/lag/$teamId'
     | '/matches/new'
+    | '/matches/$matchId/summary'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -89,6 +99,7 @@ export interface FileRouteTypes {
     | '/debugg/serverklocka'
     | '/lag/$teamId'
     | '/matches/new'
+    | '/matches/$matchId/summary'
   id:
     | '__root__'
     | '/'
@@ -97,6 +108,7 @@ export interface FileRouteTypes {
     | '/debugg/serverklocka'
     | '/lag_/$teamId'
     | '/matches/new'
+    | '/matches_/$matchId/summary'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -106,6 +118,7 @@ export interface RootRouteChildren {
   DebuggServerklockaRoute: typeof DebuggServerklockaRoute
   LagTeamIdRoute: typeof LagTeamIdRoute
   MatchesNewRoute: typeof MatchesNewRoute
+  MatchesMatchIdSummaryRoute: typeof MatchesMatchIdSummaryRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -152,6 +165,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MatchesNewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/matches_/$matchId/summary': {
+      id: '/matches_/$matchId/summary'
+      path: '/matches/$matchId/summary'
+      fullPath: '/matches/$matchId/summary'
+      preLoaderRoute: typeof MatchesMatchIdSummaryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -162,6 +182,7 @@ const rootRouteChildren: RootRouteChildren = {
   DebuggServerklockaRoute: DebuggServerklockaRoute,
   LagTeamIdRoute: LagTeamIdRoute,
   MatchesNewRoute: MatchesNewRoute,
+  MatchesMatchIdSummaryRoute: MatchesMatchIdSummaryRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
