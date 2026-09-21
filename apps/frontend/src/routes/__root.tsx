@@ -2,46 +2,59 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { Link, Outlet, createRootRoute } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { queryClient } from '@/lib/query-client';
+import { useIsPhone } from '@/lib/use-is-phone';
+
+type NavigationProps = { phone: boolean };
+
+function Navigation({ phone }: NavigationProps) {
+  const { t } = useTranslation();
+  const links = [
+    { to: '/', label: t('nav.start') },
+    { to: '/lag', label: t('nav.teams') },
+    { to: '/om', label: t('nav.about') },
+    { to: '/debugg/serverklocka', label: t('nav.debug') },
+  ] as const;
+
+  return (
+    <nav
+      aria-label={phone ? 'Huvudnavigation' : undefined}
+      className={phone ? 'phone-nav' : 'desktop-nav'}
+    >
+      {links.map(({ to, label }) => (
+        <Link
+          key={to}
+          to={to}
+          className="text-muted-foreground data-[status=active]:text-foreground flex min-h-touch items-center justify-center rounded-xl px-3 text-sm font-medium"
+        >
+          {label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
 
 function RootLayout() {
-  const { t } = useTranslation();
+  const phone = useIsPhone();
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="flex min-h-dvh flex-col">
-        <header className="border-b">
-          <nav className="mx-auto flex w-full max-w-md items-center gap-1 px-4 py-2">
-            {/* min-h-touch: 44 px träffyta, se --spacing-touch i globals.css. */}
-            <Link
-              to="/"
-              className="text-muted-foreground data-[status=active]:text-foreground flex min-h-touch items-center rounded-md px-3 text-sm font-medium"
-            >
-              {t('nav.start')}
-            </Link>
-            <Link
-              to="/om"
-              className="text-muted-foreground data-[status=active]:text-foreground flex min-h-touch items-center rounded-md px-3 text-sm font-medium"
-            >
-              {t('nav.about')}
-            </Link>
-            <Link
-              to="/lag"
-              className="text-muted-foreground data-[status=active]:text-foreground flex min-h-touch items-center rounded-md px-3 text-sm font-medium"
-            >
-              {t('nav.teams')}
-            </Link>
-            <Link
-              to="/debugg/serverklocka"
-              className="text-muted-foreground data-[status=active]:text-foreground flex min-h-touch items-center rounded-md px-3 text-sm font-medium"
-            >
-              {t('nav.debug')}
-            </Link>
-          </nav>
+      <div className="app-shell">
+        <header className="app-shell-top">
+          {phone ? (
+            <span className="app-shell-brand">COACH CLOCK</span>
+          ) : (
+            <Navigation phone={false} />
+          )}
         </header>
-
-        <main className="mx-auto w-full max-w-md flex-1 px-4 py-8">
+        <div className="app-shell-context" aria-label="Appstatus">
+          <span>VID SIDLINJEN</span>
+          <span className="app-shell-context-dot" aria-hidden="true" />
+          <span>REDO FÖR MATCH</span>
+        </div>
+        <main className="app-shell-content">
           <Outlet />
         </main>
+        {phone ? <Navigation phone /> : null}
       </div>
     </QueryClientProvider>
   );
