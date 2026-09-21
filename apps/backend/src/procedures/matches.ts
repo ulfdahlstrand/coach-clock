@@ -1,17 +1,13 @@
-import {
-  canAppendMatchEvent,
-  contract,
-  FORMATIONS,
-  parseMatchEvent,
-  type MatchEvent,
-} from '@coach-clock/contracts';
+import { canAppendMatchEvent, contract, FORMATIONS, type MatchEvent } from '@coach-clock/contracts';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { ORPCError, implement } from '@orpc/server';
+import type { ServerResponse } from 'node:http';
 import type { Kysely } from 'kysely';
 import { toMatch, type Database, type JsonObject } from '../db/types.js';
+import type { MatchEventBroadcast } from '../match-event-broadcast.js';
+import { readMatchEventsSince } from '../match-events.js';
 import type { RateLimiter } from '../rate-limit.js';
 import type { JoinRateLimiter } from '../rate-limit.js';
-import type { ServerResponse } from 'node:http';
 
 /** En klientklocka får gå högst fem minuter före servern. */
 export const MAX_EVENT_FUTURE_SKEW_MS = 5 * 60 * 1_000;
@@ -25,6 +21,7 @@ export interface ApiContext {
   readonly response: ServerResponse;
   /** Klartexttoken från den HttpOnly-cookie som #16 utfärdar. */
   readonly participantToken: string | undefined;
+  readonly eventBroadcast: MatchEventBroadcast;
 }
 
 const os = implement(contract).$context<ApiContext>();
@@ -199,25 +196,7 @@ export const listMatchEvents = os.matches.listEvents.handler(async ({ input, con
     throw new ORPCError('NOT_FOUND', { message: 'Matchen finns inte' });
   }
 
-  const rows = await context.db
-    .selectFrom('match_events')
-    .select(['event_id', 'match_id', 'seq', 'type', 'payload', 'at', 'received_at'])
-    .where('match_id', '=', input.matchId)
-    .where('seq', '>', input.sinceSeq)
-    .orderBy('seq')
-    .execute();
-
-  return rows.map((row) => ({
-    seq: row.seq,
-    receivedAt: row.received_at.toISOString(),
-    event: parseMatchEvent({
-      ...row.payload,
-      eventId: row.event_id,
-      matchId: row.match_id,
-      type: row.type,
-      at: row.at.toISOString(),
-    }),
-  }));
+  return readMatchEventsSince(context.db, input.matchId, input.sinceSeq);
 });
 
 export const appendMatchEvent = os.matches.events.handler(async ({ input, context }) => {
@@ -253,7 +232,7 @@ export const appendMatchEvent = os.matches.events.handler(async ({ input, contex
   // riktig deltagare på samma IP-adress och match.
   const rateLimitAllowsWrite = context.rateLimiter.consume(rateLimitKey);
 
-  return context.db.transaction().execute(async (trx) => {
+  const result = await context.db.transaction().execute(async (trx) => {
     // Alla appends för samma match tar samma radlås. Därmed kan bara en
     // transaktion i taget läsa nästa seq och skriva raden.
     const match = await trx
@@ -276,10 +255,13 @@ export const appendMatchEvent = os.matches.events.handler(async ({ input, contex
 
     if (existing !== undefined) {
       return {
-        eventId: existing.event_id,
-        matchId: existing.match_id,
-        seq: existing.seq,
-        receivedAt: existing.received_at.toISOString(),
+        created: false,
+        output: {
+          eventId: existing.event_id,
+          matchId: existing.match_id,
+          seq: existing.seq,
+          receivedAt: existing.received_at.toISOString(),
+        },
       };
     }
 
@@ -311,10 +293,23 @@ export const appendMatchEvent = os.matches.events.handler(async ({ input, contex
       .executeTakeFirstOrThrow();
 
     return {
-      eventId: inserted.event_id,
-      matchId: inserted.match_id,
-      seq: inserted.seq,
-      receivedAt: inserted.received_at.toISOString(),
+      created: true,
+      output: {
+        eventId: inserted.event_id,
+        matchId: inserted.match_id,
+        seq: inserted.seq,
+        receivedAt: inserted.received_at.toISOString(),
+      },
     };
   });
+
+  if (result.created) {
+    context.eventBroadcast.publish({
+      seq: result.output.seq,
+      receivedAt: result.output.receivedAt,
+      event: input,
+    });
+  }
+
+  return result.output;
 });

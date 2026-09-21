@@ -1,6 +1,7 @@
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { createHash } from 'node:crypto';
+import type { SequencedMatchEvent } from '@coach-clock/contracts';
 import { NO_MIGRATIONS } from 'kysely/migration';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDb } from './db/client.js';
@@ -140,6 +141,71 @@ async function postTo(url: string, path: string, body: unknown): Promise<Respons
 function get(url: string, path: string, query: Record<string, string>): Promise<Response> {
   const search = new URLSearchParams(query);
   return fetch(`${url}${path}?${search.toString()}`);
+}
+
+type SseMessage = {
+  readonly id: string;
+  readonly data: SequencedMatchEvent;
+};
+
+async function openEventStream(matchId: string, lastEventId?: number) {
+  const controller = new AbortController();
+  const init: RequestInit = { signal: controller.signal };
+  if (lastEventId !== undefined) init.headers = { 'Last-Event-ID': String(lastEventId) };
+
+  const response = await fetch(`${baseUrl}/matches/stream?matchId=${matchId}`, init);
+  const body = response.body;
+  if (body === null) throw new Error('SSE-svaret saknar body');
+  const reader = body.getReader();
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  async function nextMessage(): Promise<SseMessage> {
+    const readMessage = async (): Promise<SseMessage> => {
+      while (true) {
+        const boundary = buffer.indexOf('\n\n');
+        if (boundary >= 0) {
+          const block = buffer.slice(0, boundary);
+          buffer = buffer.slice(boundary + 2);
+          if (block.startsWith(':')) continue;
+
+          const lines = block.split('\n');
+          const id = lines.find((line) => line.startsWith('id: '))?.slice(4);
+          const data = lines.find((line) => line.startsWith('data: '))?.slice(6);
+          if (id !== undefined && data !== undefined) {
+            return { id, data: JSON.parse(data) as SequencedMatchEvent };
+          }
+          continue;
+        }
+
+        const chunk = await reader.read();
+        if (chunk.done) throw new Error('SSE-strömmen stängdes före nästa händelse');
+        buffer += decoder.decode(chunk.value as Uint8Array<ArrayBuffer>, { stream: true });
+      }
+    };
+
+    let timeout: NodeJS.Timeout | undefined;
+    try {
+      return await Promise.race([
+        readMessage(),
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(() => reject(new Error('Timeout i väntan på SSE-händelse')), 2_000);
+        }),
+      ]);
+    } finally {
+      if (timeout !== undefined) clearTimeout(timeout);
+    }
+  }
+
+  return {
+    response,
+    nextMessage,
+    async close() {
+      await reader.cancel();
+      controller.abort();
+    },
+  };
 }
 
 beforeAll(async () => {
@@ -551,5 +617,65 @@ describe('GET /time', () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ now: serverNow.toISOString() });
+  });
+});
+
+describe('GET /matches/stream', () => {
+  it('pushar en ny händelse i realtid med seq som SSE-id', async () => {
+    const matchId = await createMatch();
+    const otherMatchId = await createMatch();
+    const stream = await openEventStream(matchId);
+
+    try {
+      expect(stream.response.status).toBe(200);
+      expect(stream.response.headers.get('content-type')).toBe('text/event-stream; charset=utf-8');
+      expect(stream.response.headers.get('x-accel-buffering')).toBe('no');
+      expect(stream.response.headers.get('cache-control')).toContain('no-transform');
+      expect(stream.response.headers.get('content-encoding')).toBeNull();
+
+      expect((await post(baseUrl, periodStarted(otherMatchId))).status).toBe(200);
+      const event = periodStarted(matchId);
+      expect((await post(baseUrl, event)).status).toBe(200);
+
+      const message = await stream.nextMessage();
+      expect(message.id).toBe('1');
+      expect(message.data).toMatchObject({ seq: 1, event });
+    } finally {
+      await stream.close();
+    }
+  });
+
+  it('återupptar efter Last-Event-ID och spelar bara upp saknade händelser', async () => {
+    const matchId = await createMatch();
+    const events = [
+      periodStarted(matchId, uuid(), 1),
+      periodStarted(matchId, uuid(), 2),
+      periodStarted(matchId, uuid(), 3),
+    ];
+    for (const event of events) expect((await post(baseUrl, event)).status).toBe(200);
+
+    const stream = await openEventStream(matchId, 1);
+    try {
+      const second = await stream.nextMessage();
+      const third = await stream.nextMessage();
+
+      expect([second.id, third.id]).toEqual(['2', '3']);
+      expect([second.data.event, third.data.event]).toEqual(events.slice(1));
+    } finally {
+      await stream.close();
+    }
+  });
+
+  it('validerar matchId och Last-Event-ID innan strömmen öppnas', async () => {
+    const matchId = await createMatch();
+    const invalidMatch = await fetch(`${baseUrl}/matches/stream?matchId=nej`);
+    const invalidSequence = await fetch(`${baseUrl}/matches/stream?matchId=${matchId}`, {
+      headers: { 'Last-Event-ID': '-1' },
+    });
+    const missing = await fetch(`${baseUrl}/matches/stream?matchId=${uuid()}`);
+
+    expect(invalidMatch.status).toBe(400);
+    expect(invalidSequence.status).toBe(400);
+    expect(missing.status).toBe(404);
   });
 });
