@@ -39,6 +39,11 @@ test('/lag/$teamId renderar en telefonanpassad truppvy', async () => {
   expect(screen.getByRole('button', { name: 'Lägg till spelare' })).toBeDefined();
 });
 
+test('/matches/$matchId/summary renderar en delningsbar matchsammantällning', async () => {
+  await renderAt('/matches/00000000-0000-4000-8000-000000000001/summary');
+  expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Matchsammanfattning');
+});
+
 test('okänd adress ger notFound-vyn', async () => {
   await renderAt('/finns-inte');
 
