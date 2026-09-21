@@ -17,6 +17,7 @@ export interface SharingContext {
   readonly clientId: string;
   readonly joinRateLimiter: JoinRateLimiter;
   readonly response: ServerResponse;
+  readonly participantToken: string | undefined;
 }
 
 function sha256(value: string): string {
@@ -147,4 +148,45 @@ export const joinMatch = os.matches.join.handler(async ({ input, context }) => {
     matchId: participant.match_id,
     displayName: participant.display_name,
   };
+});
+
+/**
+ * Deltagarlistan är avsiktligt knuten till deltagarens HttpOnly-cookie. Det
+ * räcker alltså inte att känna till ett match-id för att se vilka som är med.
+ * Samtidigt markerar ett aktivt anrop den aktuella enheten som sedd.
+ */
+export const listMatchParticipants = os.matches.participants.handler(async ({ input, context }) => {
+  if (context.participantToken === undefined) {
+    throw new ORPCError('UNAUTHORIZED', { message: 'Gå med i matchen först' });
+  }
+
+  const participant = await context.db
+    .selectFrom('participants')
+    .select('id')
+    .where('match_id', '=', input.matchId)
+    .where('token_hash', '=', sha256(context.participantToken))
+    .executeTakeFirst();
+  if (participant === undefined) {
+    throw new ORPCError('FORBIDDEN', { message: 'Du är inte deltagare i matchen' });
+  }
+
+  await context.db
+    .updateTable('participants')
+    .set({ last_seen_at: context.now() })
+    .where('id', '=', participant.id)
+    .execute();
+
+  const participants = await context.db
+    .selectFrom('participants')
+    .select(['id', 'display_name', 'role', 'last_seen_at'])
+    .where('match_id', '=', input.matchId)
+    .orderBy('last_seen_at', 'desc')
+    .execute();
+
+  return participants.map((entry) => ({
+    id: entry.id,
+    displayName: entry.display_name,
+    role: entry.role,
+    lastSeenAt: entry.last_seen_at.toISOString(),
+  }));
 });
