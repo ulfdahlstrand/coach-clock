@@ -1,5 +1,6 @@
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { createHash } from 'node:crypto';
 import { NO_MIGRATIONS } from 'kysely/migration';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDb } from './db/client.js';
@@ -71,6 +72,21 @@ async function createMatch(): Promise<string> {
   return match.id;
 }
 
+async function createParticipant(matchId: string, role: 'owner' | 'coach' | 'referee' | 'viewer') {
+  const token = `test-participant-${uuid()}`;
+  const participant = await db
+    .insertInto('participants')
+    .values({
+      match_id: matchId,
+      role,
+      display_name: `${role} test`,
+      token_hash: createHash('sha256').update(token).digest('hex'),
+    })
+    .returning('id')
+    .executeTakeFirstOrThrow();
+  return { id: participant.id, token };
+}
+
 function periodStarted(matchId: string, eventId = uuid(), periodNumber = 1) {
   return {
     eventId,
@@ -83,10 +99,25 @@ function periodStarted(matchId: string, eventId = uuid(), periodNumber = 1) {
   } as const;
 }
 
-async function post(url: string, body: unknown): Promise<Response> {
+async function post(url: string, body: unknown, token?: string): Promise<Response> {
+  let participantToken = token;
+  if (participantToken === undefined && typeof body === 'object' && body !== null && 'matchId' in body) {
+    const matchId = body.matchId;
+    if (typeof matchId === 'string') {
+      const match = await db
+        .selectFrom('matches')
+        .select('id')
+        .where('id', '=', matchId)
+        .executeTakeFirst();
+      if (match !== undefined) participantToken = (await createParticipant(matchId, 'coach')).token;
+    }
+  }
   return fetch(`${url}/matches/events`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      ...(participantToken === undefined ? {} : { cookie: `coach_clock_participant=${participantToken}` }),
+    },
     body: JSON.stringify(body),
   });
 }
@@ -185,7 +216,7 @@ describe('POST /matches/events', () => {
     expect(rows.map(({ seq }) => seq)).toEqual(Array.from({ length: 12 }, (_, index) => index + 1));
   });
 
-  it('avvisar en orimligt framtida at och okända matcher', async () => {
+  it('avvisar en orimligt framtida at och osignerade skrivningar mot okända matcher', async () => {
     const matchId = await createMatch();
     const future = await post(baseUrl, {
       ...periodStarted(matchId),
@@ -194,7 +225,9 @@ describe('POST /matches/events', () => {
     const missing = await post(baseUrl, periodStarted(uuid()));
 
     expect(future.status).toBe(400);
-    expect(missing.status).toBe(404);
+    // Sessionen granskas före matchuppslagning så en anonym klient inte kan
+    // använda skrivendpointen för att slå upp vilka match-id:n som finns.
+    expect(missing.status).toBe(401);
     expect(
       await db.selectFrom('match_events').select('id').where('match_id', '=', matchId).execute(),
     ).toHaveLength(0);
@@ -221,6 +254,35 @@ describe('POST /matches/events', () => {
     expect(retry.status).toBe(200);
     expect(await retry.json()).toEqual(await first.json());
     expect(blocked.status).toBe(429);
+  });
+
+  it('nekar en referee att bekräfta ett spelarbyte', async () => {
+    const matchId = await createMatch();
+    const referee = await createParticipant(matchId, 'referee');
+    const response = await post(
+      baseUrl,
+      {
+        eventId: uuid(),
+        matchId,
+        v: 1,
+        at: '2026-09-20T11:59:00.000Z',
+        by: 'referee:anna',
+        type: 'substitution_confirmed',
+        swaps: [
+          {
+            slotId: 'cm',
+            outPlayerId: uuid(),
+            inPlayerId: uuid(),
+          },
+        ],
+      },
+      referee.token,
+    );
+
+    expect(response.status).toBe(403);
+    await expect(
+      db.selectFrom('match_events').select('id').where('match_id', '=', matchId).execute(),
+    ).resolves.toHaveLength(0);
   });
 });
 
