@@ -8,7 +8,7 @@ import {
   updatePlayer,
 } from './procedures/teams.js';
 import type { ApiContext } from './procedures/matches.js';
-import { appendMatchEvent, getMatch, listMatchEvents } from './procedures/matches.js';
+import { appendMatchEvent, createMatch, getMatch, listMatchEvents } from './procedures/matches.js';
 import { createMatchShare, joinMatch } from './procedures/sharing.js';
 import { getServerTime } from './procedures/time.js';
 
@@ -26,6 +26,7 @@ export const router = os.router({
   createPlayer,
   updatePlayer,
   matches: {
+    create: createMatch,
     get: getMatch,
     share: createMatchShare,
     join: joinMatch,

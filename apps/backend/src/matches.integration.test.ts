@@ -149,6 +149,53 @@ beforeAll(async () => {
   [baseUrl, limitedBaseUrl] = await Promise.all([listen(server), listen(limitedServer)]);
 });
 
+describe('POST /matches', () => {
+  it('skapar ägarsession och en komplett, startad matchlogg från uppställningen', async () => {
+    const team = await db
+      .insertInto('teams')
+      .values({ name: 'F11 Blå' })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    const roster = await Promise.all(
+      Array.from({ length: 7 }, (_, index) =>
+        db
+          .insertInto('players')
+          .values({ team_id: team.id, name: `Spelare ${index + 1}`, is_goalkeeper: index === 0 })
+          .returning('id')
+          .executeTakeFirstOrThrow(),
+      ),
+    );
+    const formation = ['gk', 'cb-left', 'cb-right', 'lm', 'cm', 'rm', 'st'];
+    const response = await postTo(baseUrl, '/matches', {
+      teamId: team.id,
+      opponent: 'Grön IF',
+      format: 7,
+      formationId: '7v7-2-3-1',
+      periodCount: 3,
+      periodLengthSeconds: 900,
+      presentPlayerIds: roster.map((player) => player.id),
+      assignments: formation.map((slotId, index) => ({ slotId, playerId: roster[index]?.id })),
+    });
+    const body = (await response.json()) as { id: string; status: string };
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('set-cookie')).toContain('HttpOnly');
+    expect(body.status).toBe('live');
+    const events = await db
+      .selectFrom('match_events')
+      .select(['seq', 'type'])
+      .where('match_id', '=', body.id)
+      .orderBy('seq')
+      .execute();
+    expect(events.map((event) => event.type)).toEqual([
+      'match_created',
+      'squad_set',
+      'lineup_set',
+      'period_started',
+    ]);
+  });
+});
+
 afterAll(async () => {
   await Promise.all([close(server), close(limitedServer)]);
   await db.destroy();
