@@ -101,7 +101,12 @@ function periodStarted(matchId: string, eventId = uuid(), periodNumber = 1) {
 
 async function post(url: string, body: unknown, token?: string): Promise<Response> {
   let participantToken = token;
-  if (participantToken === undefined && typeof body === 'object' && body !== null && 'matchId' in body) {
+  if (
+    participantToken === undefined &&
+    typeof body === 'object' &&
+    body !== null &&
+    'matchId' in body
+  ) {
     const matchId = body.matchId;
     if (typeof matchId === 'string') {
       const match = await db
@@ -116,7 +121,9 @@ async function post(url: string, body: unknown, token?: string): Promise<Respons
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      ...(participantToken === undefined ? {} : { cookie: `coach_clock_participant=${participantToken}` }),
+      ...(participantToken === undefined
+        ? {}
+        : { cookie: `coach_clock_participant=${participantToken}` }),
     },
     body: JSON.stringify(body),
   });
