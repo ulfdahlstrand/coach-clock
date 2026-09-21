@@ -1,10 +1,11 @@
 import {
   canAppendMatchEvent,
   contract,
+  FORMATIONS,
   parseMatchEvent,
   type MatchEvent,
 } from '@coach-clock/contracts';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { ORPCError, implement } from '@orpc/server';
 import type { Kysely } from 'kysely';
 import { toMatch, type Database, type JsonObject } from '../db/types.js';
@@ -27,6 +28,136 @@ export interface ApiContext {
 }
 
 const os = implement(contract).$context<ApiContext>();
+
+function hashToken(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function setParticipantCookie(response: ServerResponse, token: string): void {
+  response.setHeader(
+    'set-cookie',
+    `coach_clock_participant=${token}; HttpOnly; Path=/; SameSite=Lax`,
+  );
+}
+
+/** Skapar ett spelbart matchstartpaket utan ett mellanläge som kan bli halvskrivet. */
+export const createMatch = os.matches.create.handler(async ({ input, context }) => {
+  const formation = FORMATIONS.find((candidate) => candidate.id === input.formationId);
+  if (formation === undefined || formation.format !== input.format) {
+    throw new ORPCError('BAD_REQUEST', { message: 'Formationen passar inte vald spelform' });
+  }
+  if (input.presentPlayerIds.length < formation.slots.length) {
+    throw new ORPCError('BAD_REQUEST', {
+      message: 'För få närvarande spelare för startuppställningen',
+    });
+  }
+
+  const slotIds = new Set(formation.slots.map((slot) => slot.id));
+  const assignedIds = input.assignments.map((assignment) => assignment.playerId);
+  if (
+    input.assignments.length !== formation.slots.length ||
+    new Set(input.assignments.map((assignment) => assignment.slotId)).size !==
+      formation.slots.length ||
+    new Set(assignedIds).size !== assignedIds.length ||
+    input.assignments.some((assignment) => !slotIds.has(assignment.slotId)) ||
+    assignedIds.some((id) => !input.presentPlayerIds.includes(id))
+  ) {
+    throw new ORPCError('BAD_REQUEST', { message: 'Startuppställningen är inte komplett' });
+  }
+
+  const players = await context.db
+    .selectFrom('players')
+    .select(['id', 'name', 'number', 'is_goalkeeper'])
+    .where('team_id', '=', input.teamId)
+    .where('archived', '=', false)
+    .where('id', 'in', input.presentPlayerIds)
+    .execute();
+  if (players.length !== input.presentPlayerIds.length) {
+    throw new ORPCError('BAD_REQUEST', { message: 'En närvarande spelare finns inte i laget' });
+  }
+
+  const now = context.now();
+  const ownerToken = randomBytes(32).toString('base64url');
+  const match = await context.db.transaction().execute(async (trx) => {
+    const team = await trx
+      .selectFrom('teams')
+      .select('id')
+      .where('id', '=', input.teamId)
+      .executeTakeFirst();
+    if (team === undefined) throw new ORPCError('NOT_FOUND', { message: 'Laget finns inte' });
+
+    const created = await trx
+      .insertInto('matches')
+      .values({
+        team_id: input.teamId,
+        opponent: input.opponent,
+        format: input.format,
+        formation_id: input.formationId,
+        period_count: input.periodCount,
+        period_length_seconds: input.periodLengthSeconds,
+        status: 'live',
+      })
+      .returningAll()
+      .executeTakeFirstOrThrow();
+    const owner = await trx
+      .insertInto('participants')
+      .values({
+        match_id: created.id,
+        role: 'owner',
+        display_name: 'Tränare',
+        token_hash: hashToken(ownerToken),
+      })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    const bench = input.presentPlayerIds.filter((id) => !assignedIds.includes(id));
+    const events = [
+      {
+        type: 'match_created',
+        payload: {
+          by: 'owner',
+          v: 1,
+          format: input.format,
+          formationId: input.formationId,
+          periods: input.periodCount,
+          periodLengthSeconds: input.periodLengthSeconds,
+          opponent: input.opponent,
+        },
+      },
+      {
+        type: 'squad_set',
+        payload: {
+          by: 'owner',
+          v: 1,
+          players: players.map((player) => ({
+            playerId: player.id,
+            name: player.name,
+            number: player.number ?? 0,
+            isGoalkeeper: player.is_goalkeeper,
+          })),
+        },
+      },
+      { type: 'lineup_set', payload: { by: 'owner', v: 1, assignments: input.assignments, bench } },
+      { type: 'period_started', payload: { by: 'owner', v: 1, periodNumber: 1 } },
+    ] as const;
+    await trx
+      .insertInto('match_events')
+      .values(
+        events.map((event, index) => ({
+          match_id: created.id,
+          event_id: randomUUID(),
+          seq: index + 1,
+          type: event.type,
+          payload: event.payload,
+          at: now,
+          by_participant_id: owner.id,
+        })),
+      )
+      .execute();
+    return toMatch(created);
+  });
+  setParticipantCookie(context.response, ownerToken);
+  return { ...match, createdAt: match.createdAt.toISOString(), endedAt: null };
+});
 
 function eventPayload(event: MatchEvent): JsonObject {
   const payload: Record<string, unknown> = { ...event };
@@ -106,7 +237,7 @@ export const appendMatchEvent = os.matches.events.handler(async ({ input, contex
     .selectFrom('participants')
     .select(['id', 'role'])
     .where('match_id', '=', input.matchId)
-    .where('token_hash', '=', createHash('sha256').update(context.participantToken).digest('hex'))
+    .where('token_hash', '=', hashToken(context.participantToken))
     .executeTakeFirst();
 
   if (participant === undefined) {

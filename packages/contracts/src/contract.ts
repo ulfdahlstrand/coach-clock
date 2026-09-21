@@ -1,6 +1,6 @@
 import { oc } from '@orpc/contract';
 import { z } from 'zod';
-import { matchEventSchema, matchFormatSchema } from './events.js';
+import { matchEventSchema, matchFormatSchema, slotAssignmentSchema } from './events.js';
 import {
   createPlayerInputSchema,
   createPlayerOutputSchema,
@@ -31,6 +31,32 @@ export const matchMetadataSchema = z.object({
 });
 
 export type MatchMetadata = z.infer<typeof matchMetadataSchema>;
+
+const uniqueIds = (values: readonly string[]) => new Set(values).size === values.length;
+
+/** Allt som behövs för att skapa en match och dess första, spelbara uppställning. */
+export const createMatchInputSchema = z.object({
+  teamId: z.uuid(),
+  opponent: z.string().trim().min(1).max(200),
+  format: matchFormatSchema,
+  formationId: z.string().min(1).max(64),
+  periodCount: z.int().min(1).max(10),
+  periodLengthSeconds: z.int().min(1).max(7200),
+  presentPlayerIds: z.array(z.uuid()).min(1).refine(uniqueIds, 'Spelarna måste vara unika'),
+  assignments: z.array(slotAssignmentSchema).min(1),
+});
+
+export type CreateMatchInput = z.infer<typeof createMatchInputSchema>;
+
+export const createMatchContract = oc
+  .route({
+    method: 'POST',
+    path: '/matches',
+    operationId: 'createMatch',
+    summary: 'Skapa och starta en match med trupp och startuppställning',
+  })
+  .input(createMatchInputSchema)
+  .output(matchMetadataSchema);
 
 export const getMatchContract = oc
   .route({
@@ -175,6 +201,7 @@ export const contract = oc.router({
     .input(updatePlayerInputSchema)
     .output(updatePlayerOutputSchema),
   matches: {
+    create: createMatchContract,
     get: getMatchContract,
     share: createMatchShareContract,
     join: joinMatchContract,
