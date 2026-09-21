@@ -1,9 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Outlet, createFileRoute, useRouterState } from '@tanstack/react-router';
-import type { MatchEvent, SequencedMatchEvent } from '@coach-clock/contracts';
+import {
+  deriveMatchState,
+  FORMATIONS,
+  type MatchEvent,
+  type SequencedMatchEvent,
+} from '@coach-clock/contracts';
 import { PauseIcon, PlayIcon, SquareIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { BenchGrid, formationAssignments, MatchPitch } from '@/components/match-pitch';
 import { apiClient } from '@/lib/api-client';
 import { eventOutbox, startOutboxDrainer, withClientEventId } from '@/lib/event-outbox';
 import { createMatchEventStream } from '@/lib/match-event-stream';
@@ -68,6 +74,7 @@ function LiveMatchPage() {
   const queryClient = useQueryClient();
   const [tick, setTick] = useState(0);
   const [optimisticEvents, setOptimisticEvents] = useState<readonly MatchEvent[]>([]);
+  const [selectedSlotId, setSelectedSlotId] = useState<string | undefined>();
   const match = useQuery({
     queryKey: ['match', matchId],
     queryFn: () => apiClient.matches.get({ matchId }),
@@ -110,6 +117,11 @@ function LiveMatchPage() {
   // `tick` intentionally only makes React ask the pure clock for a new
   // server-adjusted projection; it is never accumulated as match time.
   const clock = deriveVisibleMatchClock(eventLog, serverTime.data?.now());
+  const matchState = useMemo(
+    () => deriveMatchState(eventLog, serverTime.data?.now() ?? new Date(0)),
+    [eventLog, serverTime.data],
+  );
+  const formation = FORMATIONS.find((item) => item.id === matchState.formationId);
   void tick;
   const activePeriod = clock?.periodNumber ?? 0;
   const currentPeriodEnded =
@@ -158,6 +170,33 @@ function LiveMatchPage() {
     appendEvent({ type: 'period_ended', periodNumber: clock.periodNumber });
   }
 
+  function selectPitchSlot(slotId: string): void {
+    if (selectedSlotId === undefined) {
+      if (matchState.currentSlots[slotId] !== undefined) setSelectedSlotId(slotId);
+      return;
+    }
+    if (selectedSlotId === slotId) {
+      setSelectedSlotId(undefined);
+      return;
+    }
+    const playerId = matchState.currentSlots[selectedSlotId];
+    if (playerId === undefined) {
+      setSelectedSlotId(undefined);
+      return;
+    }
+    appendEvent({ type: 'player_moved', playerId, fromSlotId: selectedSlotId, toSlotId: slotId });
+    setSelectedSlotId(undefined);
+  }
+
+  function changeFormation(formationId: string): void {
+    const next = FORMATIONS.find((item) => item.id === formationId);
+    if (next === undefined || next.id === matchState.formationId) return;
+    const assignments = formationAssignments(next, matchState.currentSlots);
+    if (assignments.some((assignment) => assignment.playerId === '')) return;
+    appendEvent({ type: 'formation_changed', formationId: next.id, assignments: [...assignments] });
+    setSelectedSlotId(undefined);
+  }
+
   const periodLabel =
     clock?.periodNumber === null || clock?.periodNumber === undefined
       ? 'Redo att starta'
@@ -196,6 +235,44 @@ function LiveMatchPage() {
             Totalt {clock === undefined ? '—:——' : formatClock(clock.elapsedMs)}
           </p>
         </div>
+
+        {formation === undefined ? null : (
+          <div className="space-y-4">
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold">Planen</h2>
+                <p className="text-muted-foreground text-sm">
+                  Varmare kort visar spelarnas tid på planen.
+                </p>
+              </div>
+              <label className="text-muted-foreground text-xs font-medium">
+                Formation
+                <select
+                  aria-label="Byt formation"
+                  className="bg-secondary mt-1 block min-h-touch rounded-lg px-2 text-sm text-foreground"
+                  value={formation.id}
+                  disabled={append.isPending || serverTime.data === undefined}
+                  onChange={(event) => changeFormation(event.target.value)}
+                >
+                  {FORMATIONS.filter(
+                    (item) => item.format === (match.data?.format ?? formation.format),
+                  ).map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <MatchPitch
+              formation={formation}
+              state={matchState}
+              selectedSlotId={selectedSlotId}
+              onSelectSlot={selectPitchSlot}
+            />
+            <BenchGrid state={matchState} />
+          </div>
+        )}
 
         {match.isPending || events.isPending || serverTime.isPending ? (
           <p role="status" className="text-muted-foreground text-center text-sm">
