@@ -158,6 +158,15 @@ export interface ParticipantTable {
   last_seen_at: Generated<Date>;
 }
 
+/** En domarlänk har egen hemlighet och kan roteras utan att påverka åskådarlänken. */
+export interface MatchRefereeLinkTable {
+  id: Generated<string>;
+  match_id: string;
+  token_hash: string;
+  created_at: Generated<Date>;
+  revoked_at: Date | null;
+}
+
 /** Notera: `tokenHash` följer medvetet inte med ut ur db-lagret. */
 export interface Participant {
   id: string;
@@ -230,5 +239,6 @@ export interface Database {
   players: PlayerTable;
   matches: MatchTable;
   participants: ParticipantTable;
+  match_referee_links: MatchRefereeLinkTable;
   match_events: MatchEventTable;
 }

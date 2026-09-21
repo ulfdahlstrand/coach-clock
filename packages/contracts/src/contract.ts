@@ -117,6 +117,39 @@ export const joinMatchContract = oc
     }),
   );
 
+/** En separat, högentropisk länk för domaren. Den ger aldrig coachbehörighet. */
+export const createRefereeLinkContract = oc
+  .route({
+    method: 'POST',
+    path: '/matches/referee-link',
+    operationId: 'createRefereeLink',
+    summary: 'Skapa eller rotera en säker domarlänk för matchen',
+  })
+  .input(z.object({ matchId: matchIdSchema }))
+  .output(z.object({ linkToken: linkTokenSchema }));
+
+export const joinAsRefereeContract = oc
+  .route({
+    method: 'POST',
+    path: '/matches/referee-join',
+    operationId: 'joinAsReferee',
+    summary: 'Gå med i en match som domare via säker länk',
+  })
+  .input(
+    z.object({
+      displayName: z.string().trim().min(1).max(100),
+      linkToken: linkTokenSchema,
+    }),
+  )
+  .output(
+    z.object({
+      participantId: z.uuid(),
+      matchId: matchIdSchema,
+      displayName: z.string(),
+      role: z.literal('referee'),
+    }),
+  );
+
 /** Delas bara med en deltagare i matchen; tokenhashar lämnar aldrig servern. */
 export const matchParticipantSchema = z.object({
   id: z.uuid(),
@@ -223,6 +256,8 @@ export const contract = oc.router({
     get: getMatchContract,
     share: createMatchShareContract,
     join: joinMatchContract,
+    refereeLink: createRefereeLinkContract,
+    refereeJoin: joinAsRefereeContract,
     participants: listMatchParticipantsContract,
     events: appendMatchEventContract,
     listEvents: listMatchEventsContract,

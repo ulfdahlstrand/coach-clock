@@ -28,6 +28,14 @@ describe('contract', () => {
       method: 'POST',
       path: '/matches/events',
     });
+    expect(contract.matches.refereeLink['~orpc'].route).toMatchObject({
+      method: 'POST',
+      path: '/matches/referee-link',
+    });
+    expect(contract.matches.refereeJoin['~orpc'].route).toMatchObject({
+      method: 'POST',
+      path: '/matches/referee-join',
+    });
   });
 
   it('exponerar läsprocedurerna på sina HTTP-routes', () => {

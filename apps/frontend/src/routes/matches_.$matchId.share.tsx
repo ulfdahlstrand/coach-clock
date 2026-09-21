@@ -8,9 +8,14 @@ import { apiClient } from '@/lib/api-client';
 import { formatJoinCode, lastSeenLabel, roleLabel } from '@/lib/sharing';
 
 type ShareDetails = { joinCode: string; linkToken: string };
+type RefereeLink = { linkToken: string };
 
 function shareStorageKey(matchId: string): string {
   return `coach-clock.share.${matchId}`;
+}
+
+function refereeStorageKey(matchId: string): string {
+  return `coach-clock.referee.${matchId}`;
 }
 
 function loadShare(matchId: string): ShareDetails | undefined {
@@ -23,12 +28,25 @@ function loadShare(matchId: string): ShareDetails | undefined {
   }
 }
 
+function loadRefereeLink(matchId: string): RefereeLink | undefined {
+  const saved = window.sessionStorage.getItem(refereeStorageKey(matchId));
+  if (saved === null) return undefined;
+  try {
+    return JSON.parse(saved) as RefereeLink;
+  } catch {
+    return undefined;
+  }
+}
+
 function MatchSharePage() {
   const { matchId } = Route.useParams();
   const [createdShare, setCreatedShare] = useState<ShareDetails | undefined>(() =>
     loadShare(matchId),
   );
   const [qrImage, setQrImage] = useState<string | undefined>();
+  const [refereeLink, setRefereeLink] = useState<RefereeLink | undefined>(() =>
+    loadRefereeLink(matchId),
+  );
   const match = useQuery({
     queryKey: ['match', matchId],
     queryFn: () => apiClient.matches.get({ matchId }),
@@ -43,6 +61,13 @@ function MatchSharePage() {
     onSuccess: (share) => {
       window.sessionStorage.setItem(shareStorageKey(matchId), JSON.stringify(share));
       setCreatedShare(share);
+    },
+  });
+  const createRefereeLink = useMutation({
+    mutationFn: () => apiClient.matches.refereeLink({ matchId }),
+    onSuccess: (link) => {
+      window.sessionStorage.setItem(refereeStorageKey(matchId), JSON.stringify(link));
+      setRefereeLink(link);
     },
   });
   const joinCode = createdShare?.joinCode ?? match.data?.joinCode ?? undefined;
@@ -75,6 +100,13 @@ function MatchSharePage() {
   async function copyShareLink(): Promise<void> {
     if (shareLink === undefined) return;
     await navigator.clipboard.writeText(shareLink);
+  }
+
+  async function copyRefereeLink(): Promise<void> {
+    if (refereeLink === undefined) return;
+    await navigator.clipboard.writeText(
+      `${window.location.origin}/domare/${refereeLink.linkToken}`,
+    );
   }
 
   return (
@@ -134,6 +166,39 @@ function MatchSharePage() {
             <CopyIcon aria-hidden="true" /> Kopiera länk
           </Button>
         )}
+      </div>
+
+      <div className="bg-card rounded-3xl border p-5">
+        <p className="text-muted-foreground text-xs font-medium tracking-[0.16em]">DOMARE</p>
+        <h2 className="mt-2 text-lg font-semibold">Separat domarlänk</h2>
+        <p className="text-muted-foreground mt-1 text-sm">
+          Ger bara tillgång till period- och klockkontroller, aldrig byten eller trupp.
+        </p>
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <Button
+            type="button"
+            variant="secondary"
+            className="min-h-touch rounded-xl"
+            disabled={createRefereeLink.isPending}
+            onClick={() => createRefereeLink.mutate()}
+          >
+            {refereeLink === undefined ? 'Skapa länk' : 'Rotera länk'}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="min-h-touch rounded-xl"
+            disabled={refereeLink === undefined}
+            onClick={() => void copyRefereeLink()}
+          >
+            <CopyIcon aria-hidden="true" /> Kopiera
+          </Button>
+        </div>
+        {createRefereeLink.error ? (
+          <p role="alert" className="text-destructive mt-3 text-sm">
+            Bara matchägaren kan skapa en domarlänk.
+          </p>
+        ) : null}
       </div>
 
       <div className="space-y-3">
