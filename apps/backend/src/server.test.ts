@@ -8,6 +8,7 @@ const server = createApiServer({
   port: 0,
   corsOrigins: ['http://localhost:5174'],
   databaseUrl: 'postgres://coach_clock:coach_clock@localhost:5434/coach_clock',
+  vapid: undefined,
 });
 
 beforeAll(async () => {

@@ -11,6 +11,7 @@ import type { ApiContext } from './procedures/matches.js';
 import { appendMatchEvent, createMatch, getMatch, listMatchEvents } from './procedures/matches.js';
 import { createRefereeLink, joinAsReferee } from './procedures/referee.js';
 import { createMatchShare, joinMatch, listMatchParticipants } from './procedures/sharing.js';
+import { subscribeToPush, unsubscribeFromPush } from './procedures/push.js';
 import { getServerTime } from './procedures/time.js';
 
 const os = implement(contract).$context<ApiContext>();
@@ -34,6 +35,8 @@ export const router = os.router({
     refereeLink: createRefereeLink,
     refereeJoin: joinAsReferee,
     participants: listMatchParticipants,
+    pushSubscribe: subscribeToPush,
+    pushUnsubscribe: unsubscribeFromPush,
     events: appendMatchEvent,
     listEvents: listMatchEvents,
   },

@@ -19,6 +19,7 @@ import { useServerTime } from '@/lib/server-time';
 import { addPendingSwap, plannerName, removePendingSwap } from '@/lib/substitution-flow';
 import { offlineMatchCache } from '@/lib/offline-match-cache';
 import { liveMatchUpdateGuard } from '@/lib/live-match-update-guard';
+import { PushNotificationToggle } from '@/components/push-notification-toggle';
 
 type WakeLockSentinelLike = { release(): Promise<void> };
 type WakeLockNavigator = Navigator & {
@@ -329,6 +330,8 @@ function LiveMatchPage() {
             Totalt {clock === undefined ? '—:——' : formatClock(clock.elapsedMs)}
           </p>
         </div>
+
+        <PushNotificationToggle matchId={matchId} />
 
         {formation === undefined ? null : (
           <div className="space-y-4">
