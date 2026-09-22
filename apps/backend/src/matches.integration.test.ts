@@ -426,6 +426,72 @@ describe('POST /matches/events', () => {
       db.selectFrom('match_events').select('id').where('match_id', '=', matchId).execute(),
     ).resolves.toHaveLength(0);
   });
+
+  it('sparar ångra och tidsrättning som nya, validerade händelser utan att radera originalet', async () => {
+    const matchId = await createMatch();
+    const coach = await createParticipant(matchId, 'coach');
+    const original = periodStarted(matchId);
+    expect((await post(baseUrl, original, coach.token)).status).toBe(200);
+
+    const correction = {
+      eventId: uuid(),
+      matchId,
+      v: 1,
+      at: '2026-09-20T12:00:00.000Z',
+      by: 'coach:ulf',
+      type: 'event_time_corrected',
+      targetEventId: original.eventId,
+      correctedAt: '2026-09-20T11:58:00.000Z',
+    } as const;
+    expect((await post(baseUrl, correction, coach.token)).status).toBe(200);
+
+    const undone = {
+      eventId: uuid(),
+      matchId,
+      v: 1,
+      at: '2026-09-20T12:00:00.000Z',
+      by: 'coach:ulf',
+      type: 'event_undone',
+      targetEventId: correction.eventId,
+    } as const;
+    expect((await post(baseUrl, undone, coach.token)).status).toBe(200);
+
+    const rows = await db
+      .selectFrom('match_events')
+      .select(['event_id', 'type'])
+      .where('match_id', '=', matchId)
+      .orderBy('seq')
+      .execute();
+    expect(rows).toEqual([
+      { event_id: original.eventId, type: 'period_started' },
+      { event_id: correction.eventId, type: 'event_time_corrected' },
+      { event_id: undone.eventId, type: 'event_undone' },
+    ]);
+  });
+
+  it('avvisar en rättelse som inte pekar på en befintlig originalhändelse', async () => {
+    const matchId = await createMatch();
+    const coach = await createParticipant(matchId, 'coach');
+    const response = await post(
+      baseUrl,
+      {
+        eventId: uuid(),
+        matchId,
+        v: 1,
+        at: '2026-09-20T12:00:00.000Z',
+        by: 'coach:ulf',
+        type: 'event_time_corrected',
+        targetEventId: uuid(),
+        correctedAt: '2026-09-20T11:58:00.000Z',
+      },
+      coach.token,
+    );
+
+    expect(response.status).toBe(400);
+    await expect(
+      db.selectFrom('match_events').select('id').where('match_id', '=', matchId).execute(),
+    ).resolves.toHaveLength(0);
+  });
 });
 
 describe('GET /matches', () => {
