@@ -76,6 +76,17 @@ test('/matches/$matchId/share visar kod och deltagarlistan', async () => {
   expect(screen.getByRole('list', { name: 'Deltagare i matchen' })).toBeDefined();
 });
 
+test('/matches/$matchId/share leder vidare in i matchen', async () => {
+  await renderAt('/matches/00000000-0000-4000-8000-000000000001/share');
+
+  // Matchen är igång när sidan visas; utan de här vägarna är den en återvändsgränd.
+  const toMatch = screen.getAllByRole('link', { name: /Till matchen/ });
+  expect(toMatch.length).toBe(2);
+  for (const link of toMatch) {
+    expect(link.getAttribute('href')).toBe('/matches/00000000-0000-4000-8000-000000000001');
+  }
+});
+
 test('okänd adress ger notFound-vyn', async () => {
   await renderAt('/finns-inte');
 
