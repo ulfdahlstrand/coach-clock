@@ -20,7 +20,7 @@ function JoinPage() {
           : { displayName: displayName.trim(), linkToken: token },
       ),
     onSuccess: (joined) =>
-      navigate({ to: '/matches/$matchId/share', params: { matchId: joined.matchId } }),
+      navigate({ to: '/titta/$token', params: { token }, search: { matchId: joined.matchId } }),
   });
 
   return (

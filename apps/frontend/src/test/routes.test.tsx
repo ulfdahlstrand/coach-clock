@@ -56,6 +56,13 @@ test('/join/$token visar den telefonanpassade join-skärmen', async () => {
   expect(screen.getByRole('button', { name: 'Gå med i matchen' })).toBeDefined();
 });
 
+test('/titta/$token visar en skrivskyddad föräldralänk', async () => {
+  await renderAt('/titta/K7M2QX');
+  expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Följ från sidlinjen');
+  expect(screen.getByRole('button', { name: 'Följ matchen' })).toBeDefined();
+  expect(screen.queryByRole('button', { name: 'Pausa' })).toBeNull();
+});
+
 test('/domare/$token visar den begränsade domarvyn', async () => {
   await renderAt('/domare/K7M2QXrefereeToken123456');
   expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Styr matchklockan');
@@ -64,7 +71,7 @@ test('/domare/$token visar den begränsade domarvyn', async () => {
 
 test('/matches/$matchId/share visar kod och deltagarlistan', async () => {
   await renderAt('/matches/00000000-0000-4000-8000-000000000001/share');
-  expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Bjud in en medtränare');
+  expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Bjud in föräldrar');
   expect(screen.getByLabelText('Anslutningskod')).toBeDefined();
   expect(screen.getByRole('list', { name: 'Deltagare i matchen' })).toBeDefined();
 });

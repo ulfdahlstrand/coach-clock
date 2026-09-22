@@ -75,7 +75,7 @@ function MatchSharePage() {
     () =>
       createdShare === undefined
         ? undefined
-        : `${window.location.origin}/join/${createdShare.linkToken}`,
+        : `${window.location.origin}/titta/${createdShare.linkToken}`,
     [createdShare],
   );
 
@@ -116,9 +116,9 @@ function MatchSharePage() {
           Till startsidan
         </Link>
         <p className="text-muted-foreground text-sm font-medium tracking-wide">DELA MATCH</p>
-        <h1 className="text-3xl font-semibold tracking-tight">Bjud in en medtränare</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">Bjud in föräldrar</h1>
         <p className="text-muted-foreground text-sm">
-          Skanna koden eller skriv in den på en annan telefon.
+          Skanna koden eller skriv in den på en annan telefon. Länken kan bara följa matchen.
         </p>
       </div>
 
@@ -147,7 +147,7 @@ function MatchSharePage() {
         ) : (
           <img
             src={qrImage}
-            alt="QR-kod för att gå med i matchen"
+            alt="QR-kod för att följa matchen"
             className="mx-auto size-52 rounded-2xl"
           />
         )}

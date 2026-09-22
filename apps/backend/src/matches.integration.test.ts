@@ -415,6 +415,17 @@ describe('POST /matches/events', () => {
       db.selectFrom('match_events').select('id').where('match_id', '=', matchId).execute(),
     ).resolves.toHaveLength(0);
   });
+
+  it('nekar en viewer varje försök att skriva en matchhändelse', async () => {
+    const matchId = await createMatch();
+    const viewer = await createParticipant(matchId, 'viewer');
+    const response = await post(baseUrl, periodStarted(matchId), viewer.token);
+
+    expect(response.status).toBe(403);
+    await expect(
+      db.selectFrom('match_events').select('id').where('match_id', '=', matchId).execute(),
+    ).resolves.toHaveLength(0);
+  });
 });
 
 describe('GET /matches', () => {
