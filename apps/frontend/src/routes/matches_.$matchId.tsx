@@ -2,19 +2,25 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Outlet, createFileRoute, useRouterState } from '@tanstack/react-router';
 import {
   deriveMatchState,
+  deriveFairnessState,
   FORMATIONS,
   type MatchEvent,
   type SequencedMatchEvent,
   type SubstitutionSwap,
 } from '@coach-clock/contracts';
 import { PauseIcon, PlayIcon, SquareIcon } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { BenchGrid, formationAssignments, MatchPitch } from '@/components/match-pitch';
 import { apiClient } from '@/lib/api-client';
 import { eventOutbox, startOutboxDrainer, withClientEventId } from '@/lib/event-outbox';
 import { createMatchEventStream } from '@/lib/match-event-stream';
 import { deriveVisibleMatchClock, formatClock } from '@/lib/match-clock-view';
+import {
+  becameSubstitutionDue,
+  formatNextSubstitution,
+  playFairnessAlert,
+} from '@/lib/fairness-ui';
 import { useServerTime } from '@/lib/server-time';
 import { addPendingSwap, plannerName, removePendingSwap } from '@/lib/substitution-flow';
 
@@ -128,6 +134,11 @@ function LiveMatchPage() {
   const [undoEvent, setUndoEvent] = useState<MatchEvent | undefined>();
   const [editingEventId, setEditingEventId] = useState<string | undefined>();
   const [correctedAt, setCorrectedAt] = useState('');
+  const [fairnessThresholdMs, setFairnessThresholdMs] = useState(90_000);
+  const [fairnessAlertOpen, setFairnessAlertOpen] = useState(false);
+  const [suggestedOutPlayerId, setSuggestedOutPlayerId] = useState<string | undefined>();
+  const [suggestedInPlayerId, setSuggestedInPlayerId] = useState<string | undefined>();
+  const wasSubstitutionDue = useRef(false);
   const match = useQuery({
     queryKey: ['match', matchId],
     queryFn: () => apiClient.matches.get({ matchId }),
@@ -175,19 +186,45 @@ function LiveMatchPage() {
   }, [events.data, optimisticEvents]);
   // `tick` intentionally only makes React ask the pure clock for a new
   // server-adjusted projection; it is never accumulated as match time.
-  const clock = deriveVisibleMatchClock(eventLog, serverTime.data?.now());
+  const serverNow = serverTime.data?.now();
+  const clock = deriveVisibleMatchClock(eventLog, serverNow);
   const matchState = useMemo(
-    () => deriveMatchState(eventLog, serverTime.data?.now() ?? new Date(0)),
-    [eventLog, serverTime.data],
+    () => deriveMatchState(eventLog, serverNow ?? new Date(0)),
+    [eventLog, serverNow, tick],
+  );
+  const fairness = useMemo(
+    () =>
+      deriveFairnessState(eventLog, serverNow ?? new Date(0), {
+        debtThresholdMs: fairnessThresholdMs,
+      }),
+    [eventLog, fairnessThresholdMs, serverNow, tick],
+  );
+  const fairnessDebts = useMemo(
+    () => Object.fromEntries(fairness.players.map((player) => [player.playerId, player.debtMs])),
+    [fairness.players],
   );
   const formation = FORMATIONS.find((item) => item.id === matchState.formationId);
-  void tick;
   const activePeriod = clock?.periodNumber ?? 0;
   const currentPeriodEnded =
     activePeriod > 0 &&
     eventLog.some((event) => event.type === 'period_ended' && event.periodNumber === activePeriod);
   const isFinalPeriod = match.data !== undefined && activePeriod >= match.data.periodCount;
   useScreenWakeLock(clock?.running === true);
+
+  useEffect(() => {
+    if (becameSubstitutionDue(wasSubstitutionDue.current, fairness.substitutionDue)) {
+      playFairnessAlert();
+      setFairnessAlertOpen(true);
+    }
+    wasSubstitutionDue.current = fairness.substitutionDue;
+  }, [fairness.substitutionDue]);
+
+  useEffect(() => {
+    const suggestion = fairness.suggestedSubstitution;
+    if (suggestion === null) return;
+    setSuggestedOutPlayerId(suggestion.outPlayerId);
+    setSuggestedInPlayerId(suggestion.inPlayerId);
+  }, [fairness.suggestedSubstitution?.inPlayerId, fairness.suggestedSubstitution?.outPlayerId]);
 
   const append = useMutation({
     mutationFn: async (event: MatchEvent) => {
@@ -255,6 +292,21 @@ function LiveMatchPage() {
       swaps: [...pendingSwaps],
     });
     setPendingSwaps([]);
+  }
+
+  function addSuggestedSwap(): void {
+    if (suggestedOutPlayerId === undefined || suggestedInPlayerId === undefined) return;
+    const slotId = Object.entries(matchState.currentSlots).find(
+      ([, playerId]) => playerId === suggestedOutPlayerId,
+    )?.[0];
+    if (slotId === undefined) return;
+    setPendingSwaps((current) =>
+      addPendingSwap(current, {
+        slotId,
+        outPlayerId: suggestedOutPlayerId,
+        inPlayerId: suggestedInPlayerId,
+      }),
+    );
   }
 
   function confirmPlan(planId: string, swaps: readonly SubstitutionSwap[]): void {
@@ -345,6 +397,11 @@ function LiveMatchPage() {
           <p className="text-muted-foreground mt-4 text-sm tabular-nums">
             Totalt {clock === undefined ? '—:——' : formatClock(clock.elapsedMs)}
           </p>
+          <div className="mt-5 flex items-center justify-center gap-2 text-sm">
+            <span className="rounded-full bg-amber-300/15 px-3 py-1 font-semibold text-amber-200">
+              Nästa byte om {formatNextSubstitution(fairness.timeToNextSubstitutionMs)}
+            </span>
+          </div>
         </div>
 
         {formation === undefined ? null : (
@@ -353,7 +410,7 @@ function LiveMatchPage() {
               <div>
                 <h2 className="text-lg font-semibold">Planen</h2>
                 <p className="text-muted-foreground text-sm">
-                  Varmare kort visar spelarnas tid på planen.
+                  Varmare kort visar vilka som väntat längst på sin rättvisa andel.
                 </p>
               </div>
               <label className="text-muted-foreground text-xs font-medium">
@@ -375,15 +432,107 @@ function LiveMatchPage() {
                 </select>
               </label>
             </div>
+            <section
+              aria-labelledby="fairness-heading"
+              className="rounded-2xl border border-amber-200/15 bg-amber-100/5 p-4"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 id="fairness-heading" className="font-semibold">
+                    Rättvist byte
+                  </h2>
+                  <p className="text-muted-foreground mt-1 text-xs">
+                    Avisera när en bänkspelare ligger efter med
+                  </p>
+                </div>
+                <label className="text-muted-foreground text-xs font-medium">
+                  Gräns
+                  <select
+                    aria-label="Gräns för bytesavisering"
+                    className="bg-secondary mt-1 block min-h-touch rounded-lg px-2 text-sm text-foreground"
+                    value={fairnessThresholdMs}
+                    onChange={(event) => setFairnessThresholdMs(Number(event.target.value))}
+                  >
+                    {[30_000, 60_000, 90_000, 120_000].map((value) => (
+                      <option key={value} value={value}>
+                        {value / 1_000} sek
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              {fairness.suggestedSubstitution === null ? (
+                <p className="text-muted-foreground mt-3 text-sm">
+                  Ingen möjlig rättvis rotation ännu.
+                </p>
+              ) : (
+                <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                  <label className="text-muted-foreground text-xs">
+                    Ut
+                    <select
+                      aria-label="Föreslagen spelare ut"
+                      className="bg-secondary mt-1 block min-h-touch w-full rounded-lg px-2 text-sm text-foreground"
+                      value={suggestedOutPlayerId ?? ''}
+                      onChange={(event) => setSuggestedOutPlayerId(event.target.value || undefined)}
+                    >
+                      {fairness.rotationPlayers
+                        .filter((player) =>
+                          Object.values(matchState.currentSlots).includes(player.playerId),
+                        )
+                        .map((player) => (
+                          <option key={player.playerId} value={player.playerId}>
+                            {player.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  <label className="text-muted-foreground text-xs">
+                    In
+                    <select
+                      aria-label="Föreslagen spelare in"
+                      className="bg-secondary mt-1 block min-h-touch w-full rounded-lg px-2 text-sm text-foreground"
+                      value={suggestedInPlayerId ?? ''}
+                      onChange={(event) => setSuggestedInPlayerId(event.target.value || undefined)}
+                    >
+                      {fairness.rotationPlayers
+                        .filter(
+                          (player) =>
+                            matchState.bench.includes(player.playerId) && player.available,
+                        )
+                        .map((player) => (
+                          <option key={player.playerId} value={player.playerId}>
+                            {player.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  <Button
+                    size="lg"
+                    variant="secondary"
+                    className="self-end"
+                    disabled={
+                      suggestedOutPlayerId === undefined || suggestedInPlayerId === undefined
+                    }
+                    onClick={addSuggestedSwap}
+                  >
+                    Lägg till
+                  </Button>
+                </div>
+              )}
+            </section>
             <MatchPitch
               formation={formation}
               state={matchState}
               selectedSlotId={selectedSlotId}
               onSelectSlot={selectPitchSlot}
+              fairnessDebts={fairnessDebts}
+              fairnessThresholdMs={fairnessThresholdMs}
             />
             <BenchGrid
               state={matchState}
               {...(selectedSlotId === undefined ? {} : { onSelectPlayer: selectBenchPlayer })}
+              fairnessDebts={fairnessDebts}
+              fairnessThresholdMs={fairnessThresholdMs}
             />
             <p className="text-muted-foreground text-center text-sm">
               {selectedSlotId === undefined
@@ -661,6 +810,37 @@ function LiveMatchPage() {
           </Button>
         </div>
       )}
+      {fairnessAlertOpen ? (
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="fairness-alert-title"
+          className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/90 p-5"
+        >
+          <section className="w-full max-w-md rounded-[2rem] border border-rose-200/50 bg-slate-900 p-6 text-center shadow-2xl">
+            <p className="text-sm font-bold tracking-[0.16em] text-rose-200 uppercase">
+              Rättvist byte
+            </p>
+            <h2 id="fairness-alert-title" className="mt-2 text-3xl font-semibold">
+              Dags att rotera
+            </h2>
+            <p className="text-muted-foreground mt-3 text-sm">
+              En bänkspelare har nått din gräns på {fairnessThresholdMs / 1_000} sekunder.
+            </p>
+            <p className="text-muted-foreground mt-2 text-xs">
+              Ljud och vibration är en bästa-ansträngning. iPhone visar alltid den här visuella
+              påminnelsen när vibration saknas.
+            </p>
+            <Button
+              size="lg"
+              className="mt-6 w-full rounded-xl"
+              onClick={() => setFairnessAlertOpen(false)}
+            >
+              Visa förslag
+            </Button>
+          </section>
+        </div>
+      ) : null}
     </section>
   );
 }
