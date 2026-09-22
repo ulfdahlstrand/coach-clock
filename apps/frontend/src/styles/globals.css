@@ -171,6 +171,39 @@
   padding: 2rem 1rem;
 }
 
+.install-prompt {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 20;
+  display: flex;
+  width: min(calc(100vw - 2rem), 24rem);
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid color-mix(in oklab, #8dff70 45%, var(--border));
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklab, var(--card) 96%, #0a0a0a);
+  box-shadow: 0 1rem 3rem rgb(0 0 0 / 25%);
+}
+
+.install-prompt-title {
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.install-prompt-copy {
+  margin-top: 0.125rem;
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+}
+
+.install-prompt-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
 /*
  * Phone shell: header, compact context band, independently scrolling work
  * surface and thumb-zone navigation. It deliberately uses dvh so browser
@@ -234,6 +267,12 @@
     padding: 0.5rem 0.5rem calc(0.5rem + env(safe-area-inset-bottom));
     border-top: 1px solid var(--border);
     background: color-mix(in oklab, var(--background) 94%, transparent);
+  }
+
+  .install-prompt {
+    right: 0.5rem;
+    bottom: calc(4.5rem + env(safe-area-inset-bottom));
+    width: calc(100vw - 1rem);
   }
 
   .phone-nav a {

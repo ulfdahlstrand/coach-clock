@@ -3,6 +3,7 @@ import tailwindcss from '@tailwindcss/vite';
 import { tanstackRouter } from '@tanstack/router-plugin/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
+import { VitePWA } from 'vite-plugin-pwa';
 
 /** Repo-roten — .env läses därifrån så att alla workspaces delar samma fil. */
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
@@ -18,6 +19,47 @@ export default defineConfig({
     }),
     react(),
     tailwindcss(),
+    VitePWA({
+      registerType: 'prompt',
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
+      injectManifest: {
+        // The empty lifecycle worker is intentional: #36 owns caching.
+        injectionPoint: undefined as never,
+      },
+      manifest: {
+        name: 'Coach Clock',
+        short_name: 'Coach Clock',
+        description: 'Rättvisa byten vid sidlinjen.',
+        lang: 'sv',
+        start_url: '/',
+        scope: '/',
+        display: 'standalone',
+        background_color: '#0a0a0a',
+        theme_color: '#0a0a0a',
+        icons: [
+          {
+            src: 'icons/coach-clock-192.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
+            src: 'icons/coach-clock-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
+            src: 'icons/coach-clock-maskable.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
+        ],
+      },
+    }),
   ],
   envDir: repoRoot,
   optimizeDeps: {
