@@ -124,15 +124,23 @@ export function MatchPitch({
       {readOnly ? null : (
         <p className="text-muted-foreground text-center text-xs">
           {selectedSlotId === undefined
-            ? 'Tryck på en spelare för att flytta eller byta plats.'
-            : 'Tryck på en annan plats för att flytta eller byta spelare.'}
+            ? 'Välj en spelare på planen.'
+            : 'Den här spelaren är vald för byte.'}
         </p>
       )}
     </section>
   );
 }
 
-export function BenchGrid({ state }: { readonly state: DerivedMatchState }) {
+export function BenchGrid({
+  state,
+  selectedPlayerId,
+  onSelectPlayer,
+}: {
+  readonly state: DerivedMatchState;
+  readonly selectedPlayerId?: string;
+  readonly onSelectPlayer?: (playerId: string) => void;
+}) {
   return (
     <section aria-labelledby="bench-heading" className="space-y-3">
       <div className="flex items-baseline justify-between">
@@ -146,9 +154,14 @@ export function BenchGrid({ state }: { readonly state: DerivedMatchState }) {
           const player = state.players[playerId];
           if (player === undefined) return null;
           return (
-            <div
+            <button
               key={playerId}
+              type="button"
+              aria-pressed={selectedPlayerId === playerId}
+              aria-label={`Byt in ${player.name}`}
+              disabled={onSelectPlayer === undefined}
               className="min-h-touch rounded-xl border border-white/10 bg-card px-3 py-2"
+              onClick={() => onSelectPlayer?.(playerId)}
             >
               <p className="truncate text-sm font-semibold">
                 {player.number === null ? '' : `${player.number} · `}
@@ -157,7 +170,7 @@ export function BenchGrid({ state }: { readonly state: DerivedMatchState }) {
               <p className="text-muted-foreground text-xs tabular-nums">
                 Speltid {formatClock(player.playedMs)}
               </p>
-            </div>
+            </button>
           );
         })}
       </div>
