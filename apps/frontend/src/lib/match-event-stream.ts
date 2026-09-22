@@ -60,8 +60,11 @@ function defaultVisibilitySource(): VisibilitySource | undefined {
   return typeof document === 'undefined' ? undefined : document;
 }
 
-function streamUrl(matchId: string): string {
-  const url = new URL('/matches/stream', apiBaseUrl);
+export function streamUrl(matchId: string, baseUrl = apiBaseUrl): string {
+  // Sökvägen läggs på basadressen i stället för att lösas mot den: driftsatt är
+  // basen `<origin>/api`, och en absolut sökväg hade kastat bort /api-prefixet
+  // som rewriten till API-tjänsten hänger på.
+  const url = new URL(`${baseUrl}/matches/stream`);
   url.searchParams.set('matchId', matchId);
   return url.toString();
 }
