@@ -18,6 +18,7 @@ import { Route as JoinTokenRouteImport } from './routes/join_.$token'
 import { Route as LagTeamIdRouteImport } from './routes/lag_.$teamId'
 import { Route as MatchesNewRouteImport } from './routes/matches.new'
 import { Route as MatchesMatchIdRouteImport } from './routes/matches_.$matchId'
+import { Route as TittaTokenRouteImport } from './routes/titta_.$token'
 import { Route as MatchesMatchIdShareRouteImport } from './routes/matches_.$matchId.share'
 import { Route as MatchesMatchIdSummaryRouteImport } from './routes/matches_.$matchId.summary'
 
@@ -66,6 +67,11 @@ const MatchesMatchIdRoute = MatchesMatchIdRouteImport.update({
   path: '/matches/$matchId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TittaTokenRoute = TittaTokenRouteImport.update({
+  id: '/titta_/$token',
+  path: '/titta/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MatchesMatchIdShareRoute = MatchesMatchIdShareRouteImport.update({
   id: '/share',
   path: '/share',
@@ -87,6 +93,7 @@ export interface FileRoutesByFullPath {
   '/lag/$teamId': typeof LagTeamIdRoute
   '/matches/new': typeof MatchesNewRoute
   '/matches/$matchId': typeof MatchesMatchIdRouteWithChildren
+  '/titta/$token': typeof TittaTokenRoute
   '/matches/$matchId/share': typeof MatchesMatchIdShareRoute
   '/matches/$matchId/summary': typeof MatchesMatchIdSummaryRoute
 }
@@ -100,6 +107,7 @@ export interface FileRoutesByTo {
   '/lag/$teamId': typeof LagTeamIdRoute
   '/matches/new': typeof MatchesNewRoute
   '/matches/$matchId': typeof MatchesMatchIdRouteWithChildren
+  '/titta/$token': typeof TittaTokenRoute
   '/matches/$matchId/share': typeof MatchesMatchIdShareRoute
   '/matches/$matchId/summary': typeof MatchesMatchIdSummaryRoute
 }
@@ -114,6 +122,7 @@ export interface FileRoutesById {
   '/lag_/$teamId': typeof LagTeamIdRoute
   '/matches/new': typeof MatchesNewRoute
   '/matches_/$matchId': typeof MatchesMatchIdRouteWithChildren
+  '/titta_/$token': typeof TittaTokenRoute
   '/matches_/$matchId/share': typeof MatchesMatchIdShareRoute
   '/matches_/$matchId/summary': typeof MatchesMatchIdSummaryRoute
 }
@@ -129,6 +138,7 @@ export interface FileRouteTypes {
     | '/lag/$teamId'
     | '/matches/new'
     | '/matches/$matchId'
+    | '/titta/$token'
     | '/matches/$matchId/share'
     | '/matches/$matchId/summary'
   fileRoutesByTo: FileRoutesByTo
@@ -142,6 +152,7 @@ export interface FileRouteTypes {
     | '/lag/$teamId'
     | '/matches/new'
     | '/matches/$matchId'
+    | '/titta/$token'
     | '/matches/$matchId/share'
     | '/matches/$matchId/summary'
   id:
@@ -155,6 +166,7 @@ export interface FileRouteTypes {
     | '/lag_/$teamId'
     | '/matches/new'
     | '/matches_/$matchId'
+    | '/titta_/$token'
     | '/matches_/$matchId/share'
     | '/matches_/$matchId/summary'
   fileRoutesById: FileRoutesById
@@ -169,6 +181,7 @@ export interface RootRouteChildren {
   LagTeamIdRoute: typeof LagTeamIdRoute
   MatchesNewRoute: typeof MatchesNewRoute
   MatchesMatchIdRoute: typeof MatchesMatchIdRouteWithChildren
+  TittaTokenRoute: typeof TittaTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -236,6 +249,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MatchesMatchIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/titta_/$token': {
+      id: '/titta_/$token'
+      path: '/titta/$token'
+      fullPath: '/titta/$token'
+      preLoaderRoute: typeof TittaTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/matches_/$matchId/share': {
       id: '/matches_/$matchId/share'
       path: '/share'
@@ -277,6 +297,7 @@ const rootRouteChildren: RootRouteChildren = {
   LagTeamIdRoute: LagTeamIdRoute,
   MatchesNewRoute: MatchesNewRoute,
   MatchesMatchIdRoute: MatchesMatchIdRouteWithChildren,
+  TittaTokenRoute: TittaTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

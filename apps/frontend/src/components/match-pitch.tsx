@@ -37,11 +37,14 @@ export function MatchPitch({
   state,
   selectedSlotId,
   onSelectSlot,
+  readOnly = false,
 }: {
   readonly formation: Formation;
   readonly state: DerivedMatchState;
   readonly selectedSlotId: string | undefined;
-  readonly onSelectSlot: (slotId: string) => void;
+  readonly onSelectSlot?: (slotId: string) => void;
+  /** A spectator can follow the formation without receiving editing controls. */
+  readonly readOnly?: boolean;
 }) {
   return (
     <section aria-label="Planuppställning" className="space-y-3">
@@ -55,25 +58,15 @@ export function MatchPitch({
           const playerId = state.currentSlots[slot.id];
           const player = playerId === undefined ? undefined : state.players[playerId];
           const selected = selectedSlotId === slot.id;
-          return (
-            <button
-              key={slot.id}
-              type="button"
-              aria-pressed={selected}
-              aria-label={
-                player === undefined ? `${slot.label}, tom plats` : `${slot.label}, ${player.name}`
-              }
-              className={
-                'absolute flex min-h-touch w-[30%] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-2xl border px-2 py-1.5 text-center shadow-lg transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ' +
-                (selected
-                  ? 'border-violet-200 bg-violet-400 text-slate-950 ring-4 ring-violet-300/35'
-                  : player === undefined
-                    ? 'border-dashed border-emerald-100/45 bg-emerald-900/70 text-emerald-100'
-                    : 'border-orange-200/65 bg-orange-400 text-slate-950')
-              }
-              style={{ left: `${slot.x * 100}%`, top: `${slot.y * 100}%` }}
-              onClick={() => onSelectSlot(slot.id)}
-            >
+          const className =
+            'absolute flex min-h-touch w-[30%] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-2xl border px-2 py-1.5 text-center shadow-lg transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ' +
+            (selected
+              ? 'border-violet-200 bg-violet-400 text-slate-950 ring-4 ring-violet-300/35'
+              : player === undefined
+                ? 'border-dashed border-emerald-100/45 bg-emerald-900/70 text-emerald-100'
+                : 'border-orange-200/65 bg-orange-400 text-slate-950');
+          const contents = (
+            <>
               <span className="text-[10px] font-bold tracking-wider uppercase opacity-75">
                 {slot.label}
               </span>
@@ -90,15 +83,51 @@ export function MatchPitch({
                   </span>
                 </>
               )}
+            </>
+          );
+          const style = { left: `${slot.x * 100}%`, top: `${slot.y * 100}%` };
+
+          if (readOnly) {
+            return (
+              <div
+                key={slot.id}
+                aria-label={
+                  player === undefined
+                    ? `${slot.label}, tom plats`
+                    : `${slot.label}, ${player.name}`
+                }
+                className={className}
+                style={style}
+              >
+                {contents}
+              </div>
+            );
+          }
+
+          return (
+            <button
+              key={slot.id}
+              type="button"
+              aria-pressed={selected}
+              aria-label={
+                player === undefined ? `${slot.label}, tom plats` : `${slot.label}, ${player.name}`
+              }
+              className={className}
+              style={style}
+              onClick={() => onSelectSlot?.(slot.id)}
+            >
+              {contents}
             </button>
           );
         })}
       </div>
-      <p className="text-muted-foreground text-center text-xs">
-        {selectedSlotId === undefined
-          ? 'Tryck på en spelare för att flytta eller byta plats.'
-          : 'Tryck på en annan plats för att flytta eller byta spelare.'}
-      </p>
+      {readOnly ? null : (
+        <p className="text-muted-foreground text-center text-xs">
+          {selectedSlotId === undefined
+            ? 'Tryck på en spelare för att flytta eller byta plats.'
+            : 'Tryck på en annan plats för att flytta eller byta spelare.'}
+        </p>
+      )}
     </section>
   );
 }

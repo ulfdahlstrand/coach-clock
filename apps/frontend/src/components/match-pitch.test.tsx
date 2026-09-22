@@ -98,4 +98,16 @@ describe('match pitch', () => {
   it('uses readable initials for compact pitch identifiers', () => {
     expect(playerInitials(' Ada Lovelace ')).toBe('AL');
   });
+
+  it('renders a viewer pitch without interactive player controls', () => {
+    const formation = FORMATIONS.find((item) => item.id === '5v5-1-2-1');
+    expect(formation).toBeDefined();
+    if (formation === undefined) return;
+    const state = deriveMatchState([], new Date(at));
+
+    render(<MatchPitch formation={formation} state={state} selectedSlotId={undefined} readOnly />);
+
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.queryByText('Tryck på en spelare för att flytta eller byta plats.')).toBeNull();
+  });
 });
