@@ -2,19 +2,25 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Outlet, createFileRoute, useRouterState } from '@tanstack/react-router';
 import {
   deriveMatchState,
+  deriveFairnessState,
   FORMATIONS,
   type MatchEvent,
   type SequencedMatchEvent,
   type SubstitutionSwap,
 } from '@coach-clock/contracts';
 import { PauseIcon, PlayIcon, SquareIcon } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { BenchGrid, formationAssignments, MatchPitch } from '@/components/match-pitch';
 import { apiClient } from '@/lib/api-client';
 import { eventOutbox, startOutboxDrainer, withClientEventId } from '@/lib/event-outbox';
 import { createMatchEventStream } from '@/lib/match-event-stream';
 import { deriveVisibleMatchClock, formatClock } from '@/lib/match-clock-view';
+import {
+  becameSubstitutionDue,
+  formatNextSubstitution,
+  playFairnessAlert,
+} from '@/lib/fairness-ui';
 import { useServerTime } from '@/lib/server-time';
 import { addPendingSwap, plannerName, removePendingSwap } from '@/lib/substitution-flow';
 import { offlineMatchCache } from '@/lib/offline-match-cache';
@@ -29,6 +35,53 @@ type ClientMatchEvent = MatchEvent extends infer Event
     ? Omit<Event, 'eventId' | 'at' | 'matchId' | 'v' | 'by'>
     : never
   : never;
+
+function eventLabel(event: MatchEvent): string {
+  switch (event.type) {
+    case 'match_created':
+      return 'Match skapad';
+    case 'squad_set':
+      return 'Truppen uppdaterad';
+    case 'lineup_set':
+      return 'Startuppställning sparad';
+    case 'period_started':
+      return `Period ${event.periodNumber} startad`;
+    case 'period_ended':
+      return `Period ${event.periodNumber} avslutad`;
+    case 'clock_paused':
+      return 'Klockan pausad';
+    case 'clock_resumed':
+      return 'Klockan fortsätter';
+    case 'substitution_planned':
+      return 'Byte planerat';
+    case 'substitution_cancelled':
+      return 'Planerat byte avbrutet';
+    case 'substitution_confirmed':
+      return 'Byte genomfört';
+    case 'player_moved':
+      return 'Spelare flyttad';
+    case 'formation_changed':
+      return 'Formation ändrad';
+    case 'availability_changed':
+      return event.available ? 'Spelare tillgänglig' : 'Spelare otillgänglig';
+    case 'match_ended':
+      return 'Match avslutad';
+    case 'event_undone':
+      return 'En händelse ångrad';
+    case 'event_time_corrected':
+      return 'Tidpunkt korrigerad';
+  }
+}
+
+function isOriginalEvent(event: MatchEvent): boolean {
+  return event.type !== 'event_undone' && event.type !== 'event_time_corrected';
+}
+
+function localDateTimeValue(iso: string): string {
+  const date = new Date(iso);
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
 
 function useScreenWakeLock(shouldKeepAwake: boolean): void {
   useEffect(() => {
@@ -81,6 +134,13 @@ function LiveMatchPage() {
   const [selectedSlotId, setSelectedSlotId] = useState<string | undefined>();
   const [pendingSwaps, setPendingSwaps] = useState<readonly SubstitutionSwap[]>([]);
   const [undoEvent, setUndoEvent] = useState<MatchEvent | undefined>();
+  const [editingEventId, setEditingEventId] = useState<string | undefined>();
+  const [correctedAt, setCorrectedAt] = useState('');
+  const [fairnessThresholdMs, setFairnessThresholdMs] = useState(90_000);
+  const [fairnessAlertOpen, setFairnessAlertOpen] = useState(false);
+  const [suggestedOutPlayerId, setSuggestedOutPlayerId] = useState<string | undefined>();
+  const [suggestedInPlayerId, setSuggestedInPlayerId] = useState<string | undefined>();
+  const wasSubstitutionDue = useRef(false);
   const match = useQuery({
     queryKey: ['match', matchId],
     queryFn: async () => {
@@ -171,13 +231,24 @@ function LiveMatchPage() {
   }, [events.data, optimisticEvents]);
   // `tick` intentionally only makes React ask the pure clock for a new
   // server-adjusted projection; it is never accumulated as match time.
-  const clock = deriveVisibleMatchClock(eventLog, serverTime.data?.now());
+  const serverNow = serverTime.data?.now();
+  const clock = deriveVisibleMatchClock(eventLog, serverNow);
   const matchState = useMemo(
-    () => deriveMatchState(eventLog, serverTime.data?.now() ?? new Date(0)),
-    [eventLog, serverTime.data],
+    () => deriveMatchState(eventLog, serverNow ?? new Date(0)),
+    [eventLog, serverNow, tick],
+  );
+  const fairness = useMemo(
+    () =>
+      deriveFairnessState(eventLog, serverNow ?? new Date(0), {
+        debtThresholdMs: fairnessThresholdMs,
+      }),
+    [eventLog, fairnessThresholdMs, serverNow, tick],
+  );
+  const fairnessDebts = useMemo(
+    () => Object.fromEntries(fairness.players.map((player) => [player.playerId, player.debtMs])),
+    [fairness.players],
   );
   const formation = FORMATIONS.find((item) => item.id === matchState.formationId);
-  void tick;
   const activePeriod = clock?.periodNumber ?? 0;
   const currentPeriodEnded =
     activePeriod > 0 &&
@@ -189,6 +260,21 @@ function LiveMatchPage() {
     liveMatchUpdateGuard.setLive(clock?.running === true);
     return () => liveMatchUpdateGuard.setLive(false);
   }, [clock?.running]);
+
+  useEffect(() => {
+    if (becameSubstitutionDue(wasSubstitutionDue.current, fairness.substitutionDue)) {
+      playFairnessAlert();
+      setFairnessAlertOpen(true);
+    }
+    wasSubstitutionDue.current = fairness.substitutionDue;
+  }, [fairness.substitutionDue]);
+
+  useEffect(() => {
+    const suggestion = fairness.suggestedSubstitution;
+    if (suggestion === null) return;
+    setSuggestedOutPlayerId(suggestion.outPlayerId);
+    setSuggestedInPlayerId(suggestion.inPlayerId);
+  }, [fairness.suggestedSubstitution?.inPlayerId, fairness.suggestedSubstitution?.outPlayerId]);
 
   const append = useMutation({
     mutationFn: async (event: MatchEvent) => {
@@ -258,6 +344,21 @@ function LiveMatchPage() {
     setPendingSwaps([]);
   }
 
+  function addSuggestedSwap(): void {
+    if (suggestedOutPlayerId === undefined || suggestedInPlayerId === undefined) return;
+    const slotId = Object.entries(matchState.currentSlots).find(
+      ([, playerId]) => playerId === suggestedOutPlayerId,
+    )?.[0];
+    if (slotId === undefined) return;
+    setPendingSwaps((current) =>
+      addPendingSwap(current, {
+        slotId,
+        outPlayerId: suggestedOutPlayerId,
+        inPlayerId: suggestedInPlayerId,
+      }),
+    );
+  }
+
   function confirmPlan(planId: string, swaps: readonly SubstitutionSwap[]): void {
     const now = serverTime.data?.nowIso();
     if (now === undefined) return;
@@ -280,6 +381,24 @@ function LiveMatchPage() {
     if (undoEvent === undefined) return;
     appendEvent({ type: 'event_undone', targetEventId: undoEvent.eventId });
     setUndoEvent(undefined);
+  }
+
+  function openCorrection(event: MatchEvent): void {
+    setEditingEventId(event.eventId);
+    setCorrectedAt(localDateTimeValue(event.at));
+  }
+
+  function correctEventTime(event: MatchEvent): void {
+    if (correctedAt === '') return;
+    const timestamp = new Date(correctedAt);
+    if (Number.isNaN(timestamp.getTime())) return;
+    appendEvent({
+      type: 'event_time_corrected',
+      targetEventId: event.eventId,
+      correctedAt: timestamp.toISOString(),
+    });
+    setEditingEventId(undefined);
+    setCorrectedAt('');
   }
 
   function changeFormation(formationId: string): void {
@@ -328,6 +447,11 @@ function LiveMatchPage() {
           <p className="text-muted-foreground mt-4 text-sm tabular-nums">
             Totalt {clock === undefined ? '—:——' : formatClock(clock.elapsedMs)}
           </p>
+          <div className="mt-5 flex items-center justify-center gap-2 text-sm">
+            <span className="rounded-full bg-amber-300/15 px-3 py-1 font-semibold text-amber-200">
+              Nästa byte om {formatNextSubstitution(fairness.timeToNextSubstitutionMs)}
+            </span>
+          </div>
         </div>
 
         {formation === undefined ? null : (
@@ -336,7 +460,7 @@ function LiveMatchPage() {
               <div>
                 <h2 className="text-lg font-semibold">Planen</h2>
                 <p className="text-muted-foreground text-sm">
-                  Varmare kort visar spelarnas tid på planen.
+                  Varmare kort visar vilka som väntat längst på sin rättvisa andel.
                 </p>
               </div>
               <label className="text-muted-foreground text-xs font-medium">
@@ -358,15 +482,107 @@ function LiveMatchPage() {
                 </select>
               </label>
             </div>
+            <section
+              aria-labelledby="fairness-heading"
+              className="rounded-2xl border border-amber-200/15 bg-amber-100/5 p-4"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 id="fairness-heading" className="font-semibold">
+                    Rättvist byte
+                  </h2>
+                  <p className="text-muted-foreground mt-1 text-xs">
+                    Avisera när en bänkspelare ligger efter med
+                  </p>
+                </div>
+                <label className="text-muted-foreground text-xs font-medium">
+                  Gräns
+                  <select
+                    aria-label="Gräns för bytesavisering"
+                    className="bg-secondary mt-1 block min-h-touch rounded-lg px-2 text-sm text-foreground"
+                    value={fairnessThresholdMs}
+                    onChange={(event) => setFairnessThresholdMs(Number(event.target.value))}
+                  >
+                    {[30_000, 60_000, 90_000, 120_000].map((value) => (
+                      <option key={value} value={value}>
+                        {value / 1_000} sek
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              {fairness.suggestedSubstitution === null ? (
+                <p className="text-muted-foreground mt-3 text-sm">
+                  Ingen möjlig rättvis rotation ännu.
+                </p>
+              ) : (
+                <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                  <label className="text-muted-foreground text-xs">
+                    Ut
+                    <select
+                      aria-label="Föreslagen spelare ut"
+                      className="bg-secondary mt-1 block min-h-touch w-full rounded-lg px-2 text-sm text-foreground"
+                      value={suggestedOutPlayerId ?? ''}
+                      onChange={(event) => setSuggestedOutPlayerId(event.target.value || undefined)}
+                    >
+                      {fairness.rotationPlayers
+                        .filter((player) =>
+                          Object.values(matchState.currentSlots).includes(player.playerId),
+                        )
+                        .map((player) => (
+                          <option key={player.playerId} value={player.playerId}>
+                            {player.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  <label className="text-muted-foreground text-xs">
+                    In
+                    <select
+                      aria-label="Föreslagen spelare in"
+                      className="bg-secondary mt-1 block min-h-touch w-full rounded-lg px-2 text-sm text-foreground"
+                      value={suggestedInPlayerId ?? ''}
+                      onChange={(event) => setSuggestedInPlayerId(event.target.value || undefined)}
+                    >
+                      {fairness.rotationPlayers
+                        .filter(
+                          (player) =>
+                            matchState.bench.includes(player.playerId) && player.available,
+                        )
+                        .map((player) => (
+                          <option key={player.playerId} value={player.playerId}>
+                            {player.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  <Button
+                    size="lg"
+                    variant="secondary"
+                    className="self-end"
+                    disabled={
+                      suggestedOutPlayerId === undefined || suggestedInPlayerId === undefined
+                    }
+                    onClick={addSuggestedSwap}
+                  >
+                    Lägg till
+                  </Button>
+                </div>
+              )}
+            </section>
             <MatchPitch
               formation={formation}
               state={matchState}
               selectedSlotId={selectedSlotId}
               onSelectSlot={selectPitchSlot}
+              fairnessDebts={fairnessDebts}
+              fairnessThresholdMs={fairnessThresholdMs}
             />
             <BenchGrid
               state={matchState}
               {...(selectedSlotId === undefined ? {} : { onSelectPlayer: selectBenchPlayer })}
+              fairnessDebts={fairnessDebts}
+              fairnessThresholdMs={fairnessThresholdMs}
             />
             <p className="text-muted-foreground text-center text-sm">
               {selectedSlotId === undefined
@@ -468,6 +684,104 @@ function LiveMatchPage() {
           </div>
         )}
 
+        <section aria-labelledby="event-history-heading" className="space-y-3">
+          <div>
+            <h2 id="event-history-heading" className="text-lg font-semibold">
+              Händelser
+            </h2>
+            <p className="text-muted-foreground text-sm">
+              Rätta i efterhand utan att radera matchloggen.
+            </p>
+          </div>
+          <ul className="space-y-2" aria-label="Matchens händelser">
+            {[...eventLog].reverse().map((event) => {
+              const canCorrect = isOriginalEvent(event);
+              const isEditing = editingEventId === event.eventId;
+              return (
+                <li key={event.eventId} className="rounded-2xl border border-white/10 bg-card p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-medium">{eventLabel(event)}</p>
+                      <p className="text-muted-foreground mt-1 text-xs tabular-nums">
+                        {new Date(event.at).toLocaleString('sv-SE', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          day: '2-digit',
+                          month: '2-digit',
+                        })}
+                      </p>
+                    </div>
+                    {canCorrect ? (
+                      <div className="flex shrink-0 gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="min-h-touch"
+                          disabled={append.isPending || serverTime.data === undefined}
+                          onClick={() =>
+                            appendEvent({ type: 'event_undone', targetEventId: event.eventId })
+                          }
+                        >
+                          Ångra
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="min-h-touch"
+                          disabled={append.isPending || serverTime.data === undefined}
+                          onClick={() => openCorrection(event)}
+                        >
+                          Rätta tid
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
+                  {isEditing ? (
+                    <form
+                      className="mt-3 flex flex-col gap-2 border-t border-white/10 pt-3"
+                      onSubmit={(submitEvent) => {
+                        submitEvent.preventDefault();
+                        correctEventTime(event);
+                      }}
+                    >
+                      <label
+                        className="text-muted-foreground text-sm"
+                        htmlFor={`corrected-at-${event.eventId}`}
+                      >
+                        Rätt tidpunkt
+                      </label>
+                      <input
+                        id={`corrected-at-${event.eventId}`}
+                        className="min-h-touch rounded-xl border border-white/15 bg-secondary px-3 text-foreground"
+                        type="datetime-local"
+                        value={correctedAt}
+                        onChange={(inputEvent) => setCorrectedAt(inputEvent.target.value)}
+                      />
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          size="sm"
+                          type="submit"
+                          disabled={append.isPending || correctedAt === ''}
+                        >
+                          Spara tid
+                        </Button>
+                        <Button
+                          size="sm"
+                          type="button"
+                          variant="secondary"
+                          onClick={() => setEditingEventId(undefined)}
+                        >
+                          Avbryt
+                        </Button>
+                      </div>
+                    </form>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+
         {match.isPending || events.isPending || serverTime.isPending ? (
           <p role="status" className="text-muted-foreground text-center text-sm">
             Synkar matchklockan…
@@ -546,6 +860,37 @@ function LiveMatchPage() {
           </Button>
         </div>
       )}
+      {fairnessAlertOpen ? (
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="fairness-alert-title"
+          className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/90 p-5"
+        >
+          <section className="w-full max-w-md rounded-[2rem] border border-rose-200/50 bg-slate-900 p-6 text-center shadow-2xl">
+            <p className="text-sm font-bold tracking-[0.16em] text-rose-200 uppercase">
+              Rättvist byte
+            </p>
+            <h2 id="fairness-alert-title" className="mt-2 text-3xl font-semibold">
+              Dags att rotera
+            </h2>
+            <p className="text-muted-foreground mt-3 text-sm">
+              En bänkspelare har nått din gräns på {fairnessThresholdMs / 1_000} sekunder.
+            </p>
+            <p className="text-muted-foreground mt-2 text-xs">
+              Ljud och vibration är en bästa-ansträngning. iPhone visar alltid den här visuella
+              påminnelsen när vibration saknas.
+            </p>
+            <Button
+              size="lg"
+              className="mt-6 w-full rounded-xl"
+              onClick={() => setFairnessAlertOpen(false)}
+            >
+              Visa förslag
+            </Button>
+          </section>
+        </div>
+      ) : null}
     </section>
   );
 }

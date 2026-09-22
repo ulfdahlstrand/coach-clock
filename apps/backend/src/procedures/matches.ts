@@ -265,6 +265,42 @@ export const appendMatchEvent = os.matches.events.handler(async ({ input, contex
       };
     }
 
+    // Korrigeringar är också append-only händelser, men deras referenser måste
+    // vara begripliga redan när de skrivs. Annars kan en felskriven UUID bli
+    // en permanent, svårtolkad post i loggen. En gravsten får i sin tur
+    // ångra en tidigare rättelse, men en tid kan bara rättas på en faktisk
+    // matchhändelse (inte på själva granskningsspåret).
+    if (input.type === 'event_undone' || input.type === 'event_time_corrected') {
+      const target = await trx
+        .selectFrom('match_events')
+        .select(['event_id', 'type'])
+        .where('match_id', '=', input.matchId)
+        .where('event_id', '=', input.targetEventId)
+        .executeTakeFirst();
+
+      if (target === undefined) {
+        throw new ORPCError('BAD_REQUEST', {
+          message: 'Händelsen som ska korrigeras finns inte i den här matchen',
+        });
+      }
+      if (
+        input.type === 'event_time_corrected' &&
+        (target.type === 'event_undone' || target.type === 'event_time_corrected')
+      ) {
+        throw new ORPCError('BAD_REQUEST', {
+          message: 'Bara en ursprunglig matchhändelse kan tidskorrigeras',
+        });
+      }
+      if (
+        input.type === 'event_time_corrected' &&
+        Date.parse(input.correctedAt) > context.now().getTime() + MAX_EVENT_FUTURE_SKEW_MS
+      ) {
+        throw new ORPCError('BAD_REQUEST', {
+          message: 'Den korrigerade tiden ligger orimligt långt före serverns tid',
+        });
+      }
+    }
+
     // En omsändning ovan ska alltid få sitt tidigare seq, även om klienten
     // hunnit slå i kvoten. Begränsningen stoppar bara nya skrivningar.
     if (!rateLimitAllowsWrite) {

@@ -1,4 +1,5 @@
 import type { DerivedMatchState, Formation } from '@coach-clock/contracts';
+import { fairnessTileClass } from '@/lib/fairness-ui';
 import { formatClock } from '@/lib/match-clock-view';
 
 export type PitchMove = {
@@ -38,6 +39,8 @@ export function MatchPitch({
   selectedSlotId,
   onSelectSlot,
   readOnly = false,
+  fairnessDebts = {},
+  fairnessThresholdMs = 90_000,
 }: {
   readonly formation: Formation;
   readonly state: DerivedMatchState;
@@ -45,6 +48,9 @@ export function MatchPitch({
   readonly onSelectSlot?: (slotId: string) => void;
   /** A spectator can follow the formation without receiving editing controls. */
   readonly readOnly?: boolean;
+  /** Positive debt means that the player has received less than their fair share. */
+  readonly fairnessDebts?: Readonly<Record<string, number>>;
+  readonly fairnessThresholdMs?: number;
 }) {
   return (
     <section aria-label="Planuppställning" className="space-y-3">
@@ -64,7 +70,7 @@ export function MatchPitch({
               ? 'border-violet-200 bg-violet-400 text-slate-950 ring-4 ring-violet-300/35'
               : player === undefined
                 ? 'border-dashed border-emerald-100/45 bg-emerald-900/70 text-emerald-100'
-                : 'border-orange-200/65 bg-orange-400 text-slate-950');
+                : fairnessTileClass(fairnessDebts[playerId ?? ''], fairnessThresholdMs));
           const contents = (
             <>
               <span className="text-[10px] font-bold tracking-wider uppercase opacity-75">
@@ -136,10 +142,14 @@ export function BenchGrid({
   state,
   selectedPlayerId,
   onSelectPlayer,
+  fairnessDebts = {},
+  fairnessThresholdMs = 90_000,
 }: {
   readonly state: DerivedMatchState;
   readonly selectedPlayerId?: string;
   readonly onSelectPlayer?: (playerId: string) => void;
+  readonly fairnessDebts?: Readonly<Record<string, number>>;
+  readonly fairnessThresholdMs?: number;
 }) {
   return (
     <section aria-labelledby="bench-heading" className="space-y-3">
@@ -160,7 +170,10 @@ export function BenchGrid({
               aria-pressed={selectedPlayerId === playerId}
               aria-label={`Byt in ${player.name}`}
               disabled={onSelectPlayer === undefined}
-              className="min-h-touch rounded-xl border border-white/10 bg-card px-3 py-2"
+              className={`min-h-touch rounded-xl border px-3 py-2 ${fairnessTileClass(
+                fairnessDebts[playerId],
+                fairnessThresholdMs,
+              )}`}
               onClick={() => onSelectPlayer?.(playerId)}
             >
               <p className="truncate text-sm font-semibold">
