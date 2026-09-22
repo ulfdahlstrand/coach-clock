@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { queryClient } from '@/lib/query-client';
 import { useIsPhone } from '@/lib/use-is-phone';
 import { InstallPrompt } from '@/components/install-prompt';
+import { ServiceWorkerUpdate } from '@/components/service-worker-update';
 
 type NavigationProps = { phone: boolean };
 
@@ -56,6 +57,7 @@ function RootLayout() {
           <Outlet />
         </main>
         <InstallPrompt />
+        <ServiceWorkerUpdate />
         {phone ? <Navigation phone /> : null}
       </div>
     </QueryClientProvider>

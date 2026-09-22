@@ -23,6 +23,8 @@ import {
 } from '@/lib/fairness-ui';
 import { useServerTime } from '@/lib/server-time';
 import { addPendingSwap, plannerName, removePendingSwap } from '@/lib/substitution-flow';
+import { offlineMatchCache } from '@/lib/offline-match-cache';
+import { liveMatchUpdateGuard } from '@/lib/live-match-update-guard';
 
 type WakeLockSentinelLike = { release(): Promise<void> };
 type WakeLockNavigator = Navigator & {
@@ -141,11 +143,31 @@ function LiveMatchPage() {
   const wasSubstitutionDue = useRef(false);
   const match = useQuery({
     queryKey: ['match', matchId],
-    queryFn: () => apiClient.matches.get({ matchId }),
+    queryFn: async () => {
+      try {
+        const metadata = await apiClient.matches.get({ matchId });
+        await offlineMatchCache.saveMetadata(metadata);
+        return metadata;
+      } catch (error) {
+        const saved = await offlineMatchCache.get(matchId);
+        if (saved?.metadata !== undefined) return saved.metadata;
+        throw error;
+      }
+    },
   });
   const events = useQuery({
     queryKey: ['match-events', matchId],
-    queryFn: () => apiClient.matches.listEvents({ matchId, sinceSeq: 0 }),
+    queryFn: async () => {
+      try {
+        const log = await apiClient.matches.listEvents({ matchId, sinceSeq: 0 });
+        await offlineMatchCache.saveEvents(matchId, log);
+        return log;
+      } catch (error) {
+        const saved = await offlineMatchCache.get(matchId);
+        if (saved !== undefined) return saved.events;
+        throw error;
+      }
+    },
   });
   const serverTime = useServerTime();
 
@@ -155,6 +177,29 @@ function LiveMatchPage() {
   }, []);
 
   useEffect(() => startOutboxDrainer(eventOutbox, (event) => apiClient.matches.events(event)), []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void eventOutbox.pending().then((entries) => {
+      if (cancelled) return;
+      const pending = entries
+        .map((entry) => entry.event)
+        .filter((event) => event.matchId === matchId);
+      setOptimisticEvents((current) => [
+        ...current,
+        ...pending.filter(
+          (event) => !current.some((candidate) => candidate.eventId === event.eventId),
+        ),
+      ]);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [matchId]);
+
+  useEffect(() => {
+    if (events.data !== undefined) void offlineMatchCache.saveEvents(matchId, events.data);
+  }, [events.data, matchId]);
 
   useEffect(() => {
     if (undoEvent === undefined) return;
@@ -210,6 +255,11 @@ function LiveMatchPage() {
     eventLog.some((event) => event.type === 'period_ended' && event.periodNumber === activePeriod);
   const isFinalPeriod = match.data !== undefined && activePeriod >= match.data.periodCount;
   useScreenWakeLock(clock?.running === true);
+
+  useEffect(() => {
+    liveMatchUpdateGuard.setLive(clock?.running === true);
+    return () => liveMatchUpdateGuard.setLive(false);
+  }, [clock?.running]);
 
   useEffect(() => {
     if (becameSubstitutionDue(wasSubstitutionDue.current, fairness.substitutionDue)) {

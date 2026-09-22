@@ -21,12 +21,12 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'prompt',
+      injectRegister: false,
       strategies: 'injectManifest',
       srcDir: 'src',
       filename: 'sw.ts',
       injectManifest: {
-        // The empty lifecycle worker is intentional: #36 owns caching.
-        injectionPoint: undefined as never,
+        injectionPoint: 'self.__WB_MANIFEST',
       },
       manifest: {
         name: 'Coach Clock',
