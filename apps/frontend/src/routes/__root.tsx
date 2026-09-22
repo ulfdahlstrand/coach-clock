@@ -3,6 +3,7 @@ import { Link, Outlet, createRootRoute } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { queryClient } from '@/lib/query-client';
 import { useIsPhone } from '@/lib/use-is-phone';
+import { InstallPrompt } from '@/components/install-prompt';
 
 type NavigationProps = { phone: boolean };
 
@@ -54,6 +55,7 @@ function RootLayout() {
         <main className="app-shell-content">
           <Outlet />
         </main>
+        <InstallPrompt />
         {phone ? <Navigation phone /> : null}
       </div>
     </QueryClientProvider>

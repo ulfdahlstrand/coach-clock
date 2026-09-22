@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" role="img" aria-label="Coach Clock">
+  <rect width="180" height="180" rx="38" fill="#0A0A0A" />
+  <circle cx="90" cy="90" r="53" fill="#1C1C1C" stroke="#8DFF70" stroke-width="8" />
+  <path d="M90 55v37l25 16" fill="none" stroke="#F5F5F5" stroke-linecap="round" stroke-linejoin="round" stroke-width="10" />
+  <circle cx="90" cy="90" r="7" fill="#8DFF70" />
+</svg>
