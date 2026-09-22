@@ -5,6 +5,7 @@ import {
   FORMATIONS,
   type MatchEvent,
   type SequencedMatchEvent,
+  type SubstitutionSwap,
 } from '@coach-clock/contracts';
 import { PauseIcon, PlayIcon, SquareIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -15,6 +16,7 @@ import { eventOutbox, startOutboxDrainer, withClientEventId } from '@/lib/event-
 import { createMatchEventStream } from '@/lib/match-event-stream';
 import { deriveVisibleMatchClock, formatClock } from '@/lib/match-clock-view';
 import { useServerTime } from '@/lib/server-time';
+import { addPendingSwap, plannerName, removePendingSwap } from '@/lib/substitution-flow';
 
 type WakeLockSentinelLike = { release(): Promise<void> };
 type WakeLockNavigator = Navigator & {
@@ -75,6 +77,8 @@ function LiveMatchPage() {
   const [tick, setTick] = useState(0);
   const [optimisticEvents, setOptimisticEvents] = useState<readonly MatchEvent[]>([]);
   const [selectedSlotId, setSelectedSlotId] = useState<string | undefined>();
+  const [pendingSwaps, setPendingSwaps] = useState<readonly SubstitutionSwap[]>([]);
+  const [undoEvent, setUndoEvent] = useState<MatchEvent | undefined>();
   const match = useQuery({
     queryKey: ['match', matchId],
     queryFn: () => apiClient.matches.get({ matchId }),
@@ -91,6 +95,12 @@ function LiveMatchPage() {
   }, []);
 
   useEffect(() => startOutboxDrainer(eventOutbox, (event) => apiClient.matches.events(event)), []);
+
+  useEffect(() => {
+    if (undoEvent === undefined) return;
+    const timeout = window.setTimeout(() => setUndoEvent(undefined), 5_000);
+    return () => window.clearTimeout(timeout);
+  }, [undoEvent]);
 
   useEffect(() => {
     const initialSeq = events.data?.at(-1)?.seq ?? 0;
@@ -171,21 +181,55 @@ function LiveMatchPage() {
   }
 
   function selectPitchSlot(slotId: string): void {
-    if (selectedSlotId === undefined) {
-      if (matchState.currentSlots[slotId] !== undefined) setSelectedSlotId(slotId);
-      return;
-    }
     if (selectedSlotId === slotId) {
       setSelectedSlotId(undefined);
       return;
     }
-    const playerId = matchState.currentSlots[selectedSlotId];
-    if (playerId === undefined) {
-      setSelectedSlotId(undefined);
-      return;
-    }
-    appendEvent({ type: 'player_moved', playerId, fromSlotId: selectedSlotId, toSlotId: slotId });
+    if (matchState.currentSlots[slotId] !== undefined) setSelectedSlotId(slotId);
+  }
+
+  function selectBenchPlayer(inPlayerId: string): void {
+    if (selectedSlotId === undefined) return;
+    const outPlayerId = matchState.currentSlots[selectedSlotId];
+    if (outPlayerId === undefined) return;
+    setPendingSwaps((current) =>
+      addPendingSwap(current, { slotId: selectedSlotId, outPlayerId, inPlayerId }),
+    );
     setSelectedSlotId(undefined);
+  }
+
+  function planSubstitutions(): void {
+    if (pendingSwaps.length === 0) return;
+    appendEvent({
+      type: 'substitution_planned',
+      planId: crypto.randomUUID(),
+      swaps: [...pendingSwaps],
+    });
+    setPendingSwaps([]);
+  }
+
+  function confirmPlan(planId: string, swaps: readonly SubstitutionSwap[]): void {
+    const now = serverTime.data?.nowIso();
+    if (now === undefined) return;
+    const event: Omit<Extract<MatchEvent, { type: 'substitution_confirmed' }>, 'eventId'> = {
+      type: 'substitution_confirmed' as const,
+      matchId,
+      v: 1 as const,
+      at: now,
+      by: 'owner' as const,
+      planId,
+      swaps: [...swaps],
+    };
+    const confirmed = withClientEventId(event);
+    setOptimisticEvents((old) => [...old, confirmed]);
+    setUndoEvent(confirmed);
+    append.mutate(confirmed);
+  }
+
+  function undoConfirmedSubstitution(): void {
+    if (undoEvent === undefined) return;
+    appendEvent({ type: 'event_undone', targetEventId: undoEvent.eventId });
+    setUndoEvent(undefined);
   }
 
   function changeFormation(formationId: string): void {
@@ -270,7 +314,107 @@ function LiveMatchPage() {
               selectedSlotId={selectedSlotId}
               onSelectSlot={selectPitchSlot}
             />
-            <BenchGrid state={matchState} />
+            <BenchGrid
+              state={matchState}
+              {...(selectedSlotId === undefined ? {} : { onSelectPlayer: selectBenchPlayer })}
+            />
+            <p className="text-muted-foreground text-center text-sm">
+              {selectedSlotId === undefined
+                ? 'Tryck på en spelare på planen som ska gå ut, sedan en spelare på bänken.'
+                : 'Välj spelaren på bänken som ska in.'}
+            </p>
+
+            {pendingSwaps.length > 0 ? (
+              <section
+                aria-labelledby="pending-swaps-heading"
+                className="rounded-2xl border border-violet-300/30 bg-violet-400/10 p-4"
+              >
+                <div className="flex items-baseline justify-between gap-3">
+                  <h2 id="pending-swaps-heading" className="font-semibold">
+                    Nya byten
+                  </h2>
+                  <span className="text-sm text-violet-100">{pendingSwaps.length} planerade</span>
+                </div>
+                <ul className="mt-3 space-y-2">
+                  {pendingSwaps.map((swap) => (
+                    <li
+                      key={swap.slotId}
+                      className="flex min-h-touch items-center justify-between gap-2 text-sm"
+                    >
+                      <span>
+                        {matchState.players[swap.outPlayerId]?.name ?? swap.outPlayerId} ut ·{' '}
+                        {matchState.players[swap.inPlayerId]?.name ?? swap.inPlayerId} in
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="min-h-touch"
+                        onClick={() =>
+                          setPendingSwaps((current) => removePendingSwap(current, swap.slotId))
+                        }
+                      >
+                        Ta bort
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+                <Button
+                  size="lg"
+                  className="mt-4 min-h-touch w-full rounded-xl"
+                  disabled={append.isPending || serverTime.data === undefined}
+                  onClick={planSubstitutions}
+                >
+                  Planera {pendingSwaps.length} {pendingSwaps.length === 1 ? 'byte' : 'byten'}
+                </Button>
+              </section>
+            ) : null}
+
+            {matchState.plannedSubstitutions.length > 0 ? (
+              <section aria-labelledby="planned-swaps-heading" className="space-y-3">
+                <h2 id="planned-swaps-heading" className="text-lg font-semibold">
+                  Planerade byten
+                </h2>
+                {matchState.plannedSubstitutions.map((plan) => (
+                  <article
+                    key={plan.planId}
+                    className="rounded-2xl border border-dashed border-violet-300/55 bg-card p-4"
+                  >
+                    <p className="text-sm font-semibold">
+                      Planerat av {plannerName(plan.plannedBy)}
+                    </p>
+                    <ul className="text-muted-foreground mt-2 space-y-1 text-sm">
+                      {plan.swaps.map((swap) => (
+                        <li key={swap.slotId}>
+                          {matchState.players[swap.outPlayerId]?.name ?? swap.outPlayerId} ut ·{' '}
+                          {matchState.players[swap.inPlayerId]?.name ?? swap.inPlayerId} in
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                      <Button
+                        size="lg"
+                        className="min-h-touch"
+                        disabled={append.isPending || serverTime.data === undefined}
+                        onClick={() => confirmPlan(plan.planId, plan.swaps)}
+                      >
+                        Bekräfta
+                      </Button>
+                      <Button
+                        size="lg"
+                        variant="secondary"
+                        className="min-h-touch"
+                        disabled={append.isPending || serverTime.data === undefined}
+                        onClick={() =>
+                          appendEvent({ type: 'substitution_cancelled', planId: plan.planId })
+                        }
+                      >
+                        Avbryt
+                      </Button>
+                    </div>
+                  </article>
+                ))}
+              </section>
+            ) : null}
           </div>
         )}
 
@@ -336,6 +480,22 @@ function LiveMatchPage() {
           Visa matchsammantällning
         </Link>
       </div>
+      {undoEvent === undefined ? null : (
+        <div
+          role="status"
+          className="fixed right-4 bottom-4 left-4 z-20 mx-auto flex max-w-md items-center justify-between gap-3 rounded-2xl bg-slate-900 px-4 py-3 text-sm text-white shadow-2xl"
+        >
+          <span>Bytet är genomfört.</span>
+          <Button
+            size="sm"
+            variant="secondary"
+            className="min-h-touch"
+            onClick={undoConfirmedSubstitution}
+          >
+            Ångra
+          </Button>
+        </div>
+      )}
     </section>
   );
 }
