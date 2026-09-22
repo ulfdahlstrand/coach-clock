@@ -203,7 +203,7 @@ function LiveMatchPage() {
       : `Period ${clock.periodNumber}${match.data ? ` av ${match.data.periodCount}` : ''}`;
 
   return (
-    <section className="dark -mx-4 -my-8 min-h-[calc(100dvh-4.5rem)] bg-background px-4 py-7 text-foreground">
+    <section className="match-surface dark -mx-4 -my-8 min-h-[calc(100dvh-4.5rem)] bg-background px-4 py-7 text-foreground">
       <div className="mx-auto flex w-full max-w-md flex-col gap-6">
         <header className="flex items-start justify-between gap-4">
           <div>

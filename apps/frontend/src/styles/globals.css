@@ -128,4 +128,127 @@
     @apply bg-background text-foreground;
     min-height: 100dvh;
   }
+
+  button,
+  input:not([type='checkbox']):not([type='radio']),
+  select,
+  textarea {
+    min-height: var(--spacing-touch);
+  }
+}
+
+/* The normal app remains a centred document on wider screens. */
+.app-shell {
+  display: flex;
+  min-height: 100dvh;
+  flex-direction: column;
+}
+
+.app-shell-top {
+  border-bottom: 1px solid var(--border);
+}
+
+.desktop-nav {
+  display: flex;
+  width: 100%;
+  max-width: 28rem;
+  margin-inline: auto;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.5rem 1rem;
+}
+
+.app-shell-context,
+.phone-nav {
+  display: none;
+}
+
+.app-shell-content {
+  width: 100%;
+  max-width: 28rem;
+  flex: 1;
+  margin-inline: auto;
+  padding: 2rem 1rem;
+}
+
+/*
+ * Phone shell: header, compact context band, independently scrolling work
+ * surface and thumb-zone navigation. It deliberately uses dvh so browser
+ * chrome does not steal the primary action at the touchline.
+ */
+@media (max-width: 700px) {
+  .app-shell {
+    display: grid;
+    height: 100dvh;
+    min-height: 100dvh;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    overflow: hidden;
+  }
+
+  .app-shell-top {
+    display: flex;
+    min-height: 3.5rem;
+    align-items: center;
+    justify-content: space-between;
+    padding: env(safe-area-inset-top) 1rem 0;
+    border-bottom: 0;
+  }
+
+  .app-shell-brand {
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0.16em;
+  }
+
+  .app-shell-context {
+    display: flex;
+    min-height: 2rem;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0 1rem;
+    color: var(--muted-foreground);
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+  }
+
+  .app-shell-context-dot {
+    width: 0.25rem;
+    height: 0.25rem;
+    border-radius: 999px;
+    background: oklch(0.66 0.16 150);
+  }
+
+  .app-shell-content {
+    max-width: none;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    padding: 1.25rem 1rem calc(1.25rem + env(safe-area-inset-bottom));
+  }
+
+  .phone-nav {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.125rem;
+    padding: 0.5rem 0.5rem calc(0.5rem + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--border);
+    background: color-mix(in oklab, var(--background) 94%, transparent);
+  }
+
+  .phone-nav a {
+    min-width: 0;
+    padding-inline: 0.25rem;
+    font-size: 0.6875rem;
+  }
+
+  .match-surface {
+    background: oklch(0.16 0.012 250);
+  }
+
+  .match-surface,
+  .match-surface * {
+    animation: none !important;
+    transition: none !important;
+  }
 }
