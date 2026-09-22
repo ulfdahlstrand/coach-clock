@@ -9,6 +9,7 @@ import {
 } from './procedures/teams.js';
 import type { ApiContext } from './procedures/matches.js';
 import { appendMatchEvent, createMatch, getMatch, listMatchEvents } from './procedures/matches.js';
+import { createRefereeLink, joinAsReferee } from './procedures/referee.js';
 import { createMatchShare, joinMatch, listMatchParticipants } from './procedures/sharing.js';
 import { getServerTime } from './procedures/time.js';
 
@@ -30,6 +31,8 @@ export const router = os.router({
     get: getMatch,
     share: createMatchShare,
     join: joinMatch,
+    refereeLink: createRefereeLink,
+    refereeJoin: joinAsReferee,
     participants: listMatchParticipants,
     events: appendMatchEvent,
     listEvents: listMatchEvents,

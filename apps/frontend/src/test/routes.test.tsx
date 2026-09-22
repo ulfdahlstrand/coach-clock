@@ -56,6 +56,12 @@ test('/join/$token visar den telefonanpassade join-skärmen', async () => {
   expect(screen.getByRole('button', { name: 'Gå med i matchen' })).toBeDefined();
 });
 
+test('/domare/$token visar den begränsade domarvyn', async () => {
+  await renderAt('/domare/K7M2QXrefereeToken123456');
+  expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Styr matchklockan');
+  expect(screen.getByRole('button', { name: 'Öppna domarklockan' })).toBeDefined();
+});
+
 test('/matches/$matchId/share visar kod och deltagarlistan', async () => {
   await renderAt('/matches/00000000-0000-4000-8000-000000000001/share');
   expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Bjud in en medtränare');

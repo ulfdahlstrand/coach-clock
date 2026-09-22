@@ -131,10 +131,13 @@ async function post(url: string, body: unknown, token?: string): Promise<Respons
   });
 }
 
-async function postTo(url: string, path: string, body: unknown): Promise<Response> {
+async function postTo(url: string, path: string, body: unknown, token?: string): Promise<Response> {
   return fetch(`${url}${path}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      ...(token === undefined ? {} : { cookie: `coach_clock_participant=${token}` }),
+    },
     body: JSON.stringify(body),
   });
 }
@@ -552,6 +555,65 @@ describe('POST /matches/share och /matches/join', () => {
     expect(bad.status).toBe(404);
     expect(blockedSameCode.status).toBe(429);
     expect(blockedSameIp.status).toBe(429);
+  });
+});
+
+describe('POST /matches/referee-link och /matches/referee-join', () => {
+  it('ger en domare en separat token och endast referee-rollen', async () => {
+    // Delar testserver med kortkodstesterna, vars IP-backoff annars är aktiv.
+    joinLimiterNow += 10_000;
+    const matchId = await createMatch();
+    const owner = await createParticipant(matchId, 'owner');
+    const linkResponse = await postTo(baseUrl, '/matches/referee-link', { matchId }, owner.token);
+    const link = (await linkResponse.json()) as { linkToken: string };
+    expect(linkResponse.status).toBe(200);
+    expect(link.linkToken).toMatch(/^[A-Za-z0-9_-]{24}$/);
+
+    const join = await postTo(baseUrl, '/matches/referee-join', {
+      linkToken: link.linkToken,
+      displayName: 'Kim Domare',
+    });
+    expect(join.status).toBe(200);
+    await expect(join.json()).resolves.toMatchObject({ matchId, role: 'referee' });
+    const participant = await db
+      .selectFrom('participants')
+      .select(['role', 'token_hash'])
+      .where('match_id', '=', matchId)
+      .where('display_name', '=', 'Kim Domare')
+      .executeTakeFirstOrThrow();
+    expect(participant.role).toBe('referee');
+    expect(participant.token_hash).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('kräver en ägarsession och återkallar föregående domarlänk vid rotation', async () => {
+    joinLimiterNow += 10_000;
+    const matchId = await createMatch();
+    expect((await postTo(baseUrl, '/matches/referee-link', { matchId })).status).toBe(401);
+    const owner = await createParticipant(matchId, 'owner');
+    const first = (
+      await postTo(baseUrl, '/matches/referee-link', { matchId }, owner.token)
+    ).json() as Promise<{ linkToken: string }>;
+    const second = (
+      await postTo(baseUrl, '/matches/referee-link', { matchId }, owner.token)
+    ).json() as Promise<{ linkToken: string }>;
+    const [{ linkToken: oldToken }, { linkToken: freshToken }] = await Promise.all([first, second]);
+    expect(
+      (
+        await postTo(baseUrl, '/matches/referee-join', {
+          linkToken: oldToken,
+          displayName: 'För sent',
+        })
+      ).status,
+    ).toBe(404);
+    joinLimiterNow += 10_000;
+    expect(
+      (
+        await postTo(baseUrl, '/matches/referee-join', {
+          linkToken: freshToken,
+          displayName: 'Rätt',
+        })
+      ).status,
+    ).toBe(200);
   });
 });
 
