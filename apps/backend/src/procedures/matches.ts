@@ -8,6 +8,7 @@ import type { MatchEventBroadcast } from '../match-event-broadcast.js';
 import { readMatchEventsSince } from '../match-events.js';
 import type { RateLimiter } from '../rate-limit.js';
 import type { JoinRateLimiter } from '../rate-limit.js';
+import type { PushNotifier } from '../push.js';
 
 /** En klientklocka får gå högst fem minuter före servern. */
 export const MAX_EVENT_FUTURE_SKEW_MS = 5 * 60 * 1_000;
@@ -22,6 +23,7 @@ export interface ApiContext {
   /** Klartexttoken från den HttpOnly-cookie som #16 utfärdar. */
   readonly participantToken: string | undefined;
   readonly eventBroadcast: MatchEventBroadcast;
+  readonly pushNotifier: PushNotifier;
 }
 
 const os = implement(contract).$context<ApiContext>();
@@ -345,6 +347,11 @@ export const appendMatchEvent = os.matches.events.handler(async ({ input, contex
       receivedAt: result.output.receivedAt,
       event: input,
     });
+    // Push är en förbättring, inte en del av den atomära händelseskrivningen.
+    // Ett fel hos en push-leverantör får aldrig göra att tränarens byte tappas bort.
+    void context.pushNotifier
+      .notifyWhenSwapDue(input.matchId, context.now())
+      .catch(() => undefined);
   }
 
   return result.output;

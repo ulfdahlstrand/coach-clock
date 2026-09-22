@@ -167,6 +167,18 @@ export interface MatchRefereeLinkTable {
   revoked_at: Date | null;
 }
 
+/** En Web Push-prenumeration hör till en deltagarsession, aldrig till en rå e-postadress. */
+export interface PushSubscriptionTable {
+  id: Generated<string>;
+  participant_id: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  expiration_time: Date | null;
+  created_at: Generated<Date>;
+  last_notified_at: Date | null;
+}
+
 /** Notera: `tokenHash` följer medvetet inte med ut ur db-lagret. */
 export interface Participant {
   id: string;
@@ -240,5 +252,6 @@ export interface Database {
   matches: MatchTable;
   participants: ParticipantTable;
   match_referee_links: MatchRefereeLinkTable;
+  push_subscriptions: PushSubscriptionTable;
   match_events: MatchEventTable;
 }

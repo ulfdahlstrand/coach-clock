@@ -12,6 +12,7 @@ import type { JoinRateLimiter } from './rate-limit.js';
 import { defaultAppendRateLimiter, defaultJoinRateLimiter } from './rate-limit.js';
 import { router } from './router.js';
 import { handleMatchEventStream } from './sse.js';
+import { createPushNotifier, type PushNotifier } from './push.js';
 
 export interface ApiServerDependencies {
   readonly db?: Kysely<Database>;
@@ -19,6 +20,7 @@ export interface ApiServerDependencies {
   readonly joinRateLimiter?: JoinRateLimiter;
   readonly now?: () => Date;
   readonly eventBroadcast?: MatchEventBroadcast;
+  readonly pushNotifier?: PushNotifier;
 }
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
@@ -45,6 +47,7 @@ function createHandler(env: Env): OpenAPIHandler<{
   response: ServerResponse;
   participantToken: string | undefined;
   eventBroadcast: MatchEventBroadcast;
+  pushNotifier: PushNotifier;
 }> {
   return new OpenAPIHandler(router, {
     plugins: [
@@ -97,12 +100,14 @@ async function route(
 
 export function createApiServer(env: Env, supplied: ApiServerDependencies = {}): Server {
   const handler = createHandler(env);
+  const db = supplied.db ?? getDb();
   const dependencies: Required<ApiServerDependencies> = {
-    db: supplied.db ?? getDb(),
+    db,
     rateLimiter: supplied.rateLimiter ?? defaultAppendRateLimiter,
     joinRateLimiter: supplied.joinRateLimiter ?? defaultJoinRateLimiter,
     now: supplied.now ?? (() => new Date()),
     eventBroadcast: supplied.eventBroadcast ?? new InProcessMatchEventBroadcast(),
+    pushNotifier: supplied.pushNotifier ?? createPushNotifier(env, db),
   };
 
   return createServer((req, res) => {

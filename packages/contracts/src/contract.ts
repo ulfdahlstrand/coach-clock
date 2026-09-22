@@ -168,6 +168,36 @@ export const listMatchParticipantsContract = oc
   .input(z.object({ matchId: matchIdSchema }))
   .output(z.array(matchParticipantSchema));
 
+const pushSubscriptionSchema = z.object({
+  endpoint: z.url().max(2_048),
+  expirationTime: z.number().nullable(),
+  keys: z.object({
+    p256dh: z.string().min(1).max(512),
+    auth: z.string().min(1).max(512),
+  }),
+});
+
+/** Registrerar en deltagarenhet. Endast dess HttpOnly-session får ändra den. */
+export const subscribeToPushContract = oc
+  .route({
+    method: 'POST',
+    path: '/matches/push-subscriptions',
+    operationId: 'subscribeToPush',
+    summary: 'Aktivera bytesnotiser på den här enheten',
+  })
+  .input(z.object({ matchId: matchIdSchema, subscription: pushSubscriptionSchema }))
+  .output(z.object({ enabled: z.literal(true) }));
+
+export const unsubscribeFromPushContract = oc
+  .route({
+    method: 'POST',
+    path: '/matches/push-subscriptions/remove',
+    operationId: 'unsubscribeFromPush',
+    summary: 'Stäng av bytesnotiser på den här enheten',
+  })
+  .input(z.object({ matchId: matchIdSchema, endpoint: z.url().max(2_048) }))
+  .output(z.object({ enabled: z.literal(false) }));
+
 /** Svaret är samma oavsett om händelsen skapades eller redan fanns. */
 export const appendMatchEventOutputSchema = z.object({
   eventId: z.uuid(),
@@ -259,6 +289,8 @@ export const contract = oc.router({
     refereeLink: createRefereeLinkContract,
     refereeJoin: joinAsRefereeContract,
     participants: listMatchParticipantsContract,
+    pushSubscribe: subscribeToPushContract,
+    pushUnsubscribe: unsubscribeFromPushContract,
     events: appendMatchEventContract,
     listEvents: listMatchEventsContract,
   },

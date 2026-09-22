@@ -51,6 +51,10 @@ describe('contract', () => {
       method: 'GET',
       path: '/matches/participants',
     });
+    expect(contract.matches.pushSubscribe['~orpc'].route).toMatchObject({
+      method: 'POST',
+      path: '/matches/push-subscriptions',
+    });
     expect(contract.time['~orpc'].route).toMatchObject({ method: 'GET', path: '/time' });
   });
 

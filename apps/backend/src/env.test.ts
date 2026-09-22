@@ -7,7 +7,19 @@ describe('readEnv', () => {
       port: 4002,
       corsOrigins: ['http://localhost:5174'],
       databaseUrl: 'postgres://coach_clock:coach_clock@localhost:5434/coach_clock',
+      vapid: undefined,
     });
+  });
+
+  it('kräver en komplett VAPID-konfiguration och lämnar inga nycklar i källkod', () => {
+    expect(() => readEnv({ VAPID_PUBLIC_KEY: 'public' })).toThrow(/tillsammans/);
+    expect(
+      readEnv({
+        VAPID_SUBJECT: 'mailto:coach@example.test',
+        VAPID_PUBLIC_KEY: 'public',
+        VAPID_PRIVATE_KEY: 'private',
+      }).vapid,
+    ).toEqual({ subject: 'mailto:coach@example.test', publicKey: 'public', privateKey: 'private' });
   });
 
   it('läser port och en kommaseparerad lista av origins', () => {

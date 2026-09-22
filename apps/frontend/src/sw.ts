@@ -43,3 +43,29 @@ registerRoute(
     ['style', 'script', 'worker', 'image', 'font'].includes(request.destination),
   new StaleWhileRevalidate({ cacheName: 'coach-clock-static-v1' }),
 );
+
+self.addEventListener('push', (event) => {
+  const data: unknown = event.data?.json();
+  const notification =
+    typeof data === 'object' && data !== null
+      ? (data as { title?: unknown; body?: unknown; url?: unknown })
+      : {};
+  event.waitUntil(
+    self.registration.showNotification(
+      typeof notification.title === 'string' ? notification.title : 'Coach Clock',
+      {
+        body: typeof notification.body === 'string' ? notification.body : 'Det är dags för byte.',
+        icon: '/icons/coach-clock-192.png',
+        badge: '/icons/coach-clock-192.png',
+        data: { url: typeof notification.url === 'string' ? notification.url : '/' },
+        tag: 'coach-clock-substitution',
+      },
+    ),
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = (event.notification.data as { url?: string } | undefined)?.url ?? '/';
+  event.waitUntil(self.clients.openWindow(url));
+});

@@ -21,6 +21,7 @@
     "@orpc/zod": "^1.15.2",
     "kysely": "^0.29.6",
     "pg": "^8.23.0",
+    "web-push": "^3.6.7",
     "zod": "^4.6.5"
   },
   "devDependencies": {
@@ -28,6 +29,7 @@
     "@coach-clock/tsconfig": "*",
     "@types/node": "^26.6.2",
     "@types/pg": "^8.23.1",
+    "@types/web-push": "^3.6.4",
     "eslint": "^9.0.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",

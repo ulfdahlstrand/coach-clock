@@ -9,6 +9,27 @@ export interface Env {
   readonly corsOrigins: readonly string[];
   /** Anslutningssträng till Postgres. */
   readonly databaseUrl: string;
+  /** VAPID är valfritt lokalt, men måste vara komplett när push aktiveras. */
+  readonly vapid:
+    | { readonly subject: string; readonly publicKey: string; readonly privateKey: string }
+    | undefined;
+}
+
+function parseVapid(source: NodeJS.ProcessEnv): Env['vapid'] {
+  const subject = source['VAPID_SUBJECT']?.trim();
+  const publicKey = source['VAPID_PUBLIC_KEY']?.trim();
+  const privateKey = source['VAPID_PRIVATE_KEY']?.trim();
+  if (subject === undefined && publicKey === undefined && privateKey === undefined)
+    return undefined;
+  if (subject === undefined || publicKey === undefined || privateKey === undefined) {
+    throw new Error(
+      'VAPID_SUBJECT, VAPID_PUBLIC_KEY och VAPID_PRIVATE_KEY måste sättas tillsammans',
+    );
+  }
+  if (!/^mailto:|^https:\/\//.test(subject)) {
+    throw new Error('VAPID_SUBJECT måste vara en mailto:- eller https:-adress');
+  }
+  return { subject, publicKey, privateKey };
 }
 
 const DEFAULT_PORT = 4002;
@@ -59,5 +80,6 @@ export function readEnv(source: NodeJS.ProcessEnv = process.env): Env {
     port: parsePort(source['PORT']),
     corsOrigins: parseCorsOrigins(source['CORS_ORIGIN']),
     databaseUrl: parseDatabaseUrl(source['DATABASE_URL'], source['NODE_ENV']),
+    vapid: parseVapid(source),
   };
 }
