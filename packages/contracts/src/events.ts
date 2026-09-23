@@ -107,6 +107,9 @@ function event<T extends string, P extends z.ZodRawShape>(type: T, payload: P) {
   return z.object({ ...envelope, type: z.literal(type), ...payload });
 }
 
+/** Förvald bytestid: så länge en utespelare spelar innan hon föreslås ut. */
+export const DEFAULT_IDEAL_SHIFT_SECONDS = 240;
+
 /** Matchen skapas: spelform, startformation, periodupplägg och motståndare. */
 export const matchCreatedSchema = event('match_created', {
   format: matchFormatSchema,
@@ -114,6 +117,11 @@ export const matchCreatedSchema = event('match_created', {
   periods: z.int().min(1).max(10),
   periodLengthSeconds: z.int().min(1).max(7200),
   opponent: z.string().min(1).max(200),
+  /**
+   * Önskad bytestid (#82). Valfri, så att matcher skapade innan fältet fanns
+   * fortfarande går att läsa — de får DEFAULT_IDEAL_SHIFT_SECONDS.
+   */
+  idealShiftSeconds: z.int().min(60).max(1200).optional(),
 });
 
 /** Truppen sätts (eller sätts om innan avspark). */

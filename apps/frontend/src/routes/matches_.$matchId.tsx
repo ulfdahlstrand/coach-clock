@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Outlet, createFileRoute, useRouterState } from '@tanstack/react-router';
 import {
+  DEFAULT_SUBSTITUTION_DEBT_THRESHOLD_MS,
   deriveMatchState,
   deriveFairnessState,
   FORMATIONS,
@@ -25,6 +26,11 @@ import { useServerTime } from '@/lib/server-time';
 import { addPendingSwap, plannerName, removePendingSwap } from '@/lib/substitution-flow';
 import { offlineMatchCache } from '@/lib/offline-match-cache';
 import { liveMatchUpdateGuard } from '@/lib/live-match-update-guard';
+
+/** "4 min" för hela minuter, annars minuter och sekunder. */
+function formatShift(ms: number): string {
+  return ms % 60_000 === 0 ? `${String(ms / 60_000)} min` : formatClock(ms);
+}
 
 type WakeLockSentinelLike = { release(): Promise<void> };
 type WakeLockNavigator = Navigator & {
@@ -136,7 +142,6 @@ function LiveMatchPage() {
   const [undoEvent, setUndoEvent] = useState<MatchEvent | undefined>();
   const [editingEventId, setEditingEventId] = useState<string | undefined>();
   const [correctedAt, setCorrectedAt] = useState('');
-  const [fairnessThresholdMs, setFairnessThresholdMs] = useState(90_000);
   const [fairnessAlertOpen, setFairnessAlertOpen] = useState(false);
   const [suggestedOutPlayerId, setSuggestedOutPlayerId] = useState<string | undefined>();
   const [suggestedInPlayerId, setSuggestedInPlayerId] = useState<string | undefined>();
@@ -238,11 +243,8 @@ function LiveMatchPage() {
     [eventLog, serverNow, tick],
   );
   const fairness = useMemo(
-    () =>
-      deriveFairnessState(eventLog, serverNow ?? new Date(0), {
-        debtThresholdMs: fairnessThresholdMs,
-      }),
-    [eventLog, fairnessThresholdMs, serverNow, tick],
+    () => deriveFairnessState(eventLog, serverNow ?? new Date(0)),
+    [eventLog, serverNow, tick],
   );
   const fairnessDebts = useMemo(
     () => Object.fromEntries(fairness.players.map((player) => [player.playerId, player.debtMs])),
@@ -492,24 +494,17 @@ function LiveMatchPage() {
                     Rättvist byte
                   </h2>
                   <p className="text-muted-foreground mt-1 text-xs">
-                    Avisera när en bänkspelare ligger efter med
+                    Föreslår byte när någon spelat klart sitt pass och en bänkspelare ligger efter.
+                    Du kan alltid byta själv, till exempel vid en skada.
                   </p>
                 </div>
-                <label className="text-muted-foreground text-xs font-medium">
-                  Gräns
-                  <select
-                    aria-label="Gräns för bytesavisering"
-                    className="bg-secondary mt-1 block min-h-touch rounded-lg px-2 text-sm text-foreground"
-                    value={fairnessThresholdMs}
-                    onChange={(event) => setFairnessThresholdMs(Number(event.target.value))}
-                  >
-                    {[30_000, 60_000, 90_000, 120_000].map((value) => (
-                      <option key={value} value={value}>
-                        {value / 1_000} sek
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                {/* Bytestiden väljs när matchen skapas och delas av alla tränare (#82). */}
+                <p className="text-muted-foreground text-right text-xs font-medium">
+                  Bytestid
+                  <span className="mt-1 block text-sm font-semibold text-foreground">
+                    {formatShift(fairness.idealShiftMs)}
+                  </span>
+                </p>
               </div>
               {fairness.suggestedSubstitution === null ? (
                 <p className="text-muted-foreground mt-3 text-sm">
@@ -576,13 +571,13 @@ function LiveMatchPage() {
               selectedSlotId={selectedSlotId}
               onSelectSlot={selectPitchSlot}
               fairnessDebts={fairnessDebts}
-              fairnessThresholdMs={fairnessThresholdMs}
+              fairnessThresholdMs={DEFAULT_SUBSTITUTION_DEBT_THRESHOLD_MS}
             />
             <BenchGrid
               state={matchState}
               {...(selectedSlotId === undefined ? {} : { onSelectPlayer: selectBenchPlayer })}
               fairnessDebts={fairnessDebts}
-              fairnessThresholdMs={fairnessThresholdMs}
+              fairnessThresholdMs={DEFAULT_SUBSTITUTION_DEBT_THRESHOLD_MS}
             />
             <p className="text-muted-foreground text-center text-sm">
               {selectedSlotId === undefined
@@ -875,7 +870,8 @@ function LiveMatchPage() {
               Dags att rotera
             </h2>
             <p className="text-muted-foreground mt-3 text-sm">
-              En bänkspelare har nått din gräns på {fairnessThresholdMs / 1_000} sekunder.
+              En spelare har spelat klart sitt pass på {formatShift(fairness.idealShiftMs)} och en
+              bänkspelare ligger efter.
             </p>
             <p className="text-muted-foreground mt-2 text-xs">
               Ljud och vibration är en bästa-ansträngning. iPhone visar alltid den här visuella

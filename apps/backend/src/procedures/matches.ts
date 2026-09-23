@@ -1,4 +1,10 @@
-import { canAppendMatchEvent, contract, FORMATIONS, type MatchEvent } from '@coach-clock/contracts';
+import {
+  canAppendMatchEvent,
+  contract,
+  DEFAULT_IDEAL_SHIFT_SECONDS,
+  FORMATIONS,
+  type MatchEvent,
+} from '@coach-clock/contracts';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { ORPCError, implement } from '@orpc/server';
 import type { ServerResponse } from 'node:http';
@@ -118,6 +124,7 @@ export const createMatch = os.matches.create.handler(async ({ input, context }) 
           periods: input.periodCount,
           periodLengthSeconds: input.periodLengthSeconds,
           opponent: input.opponent,
+          idealShiftSeconds: input.idealShiftSeconds ?? DEFAULT_IDEAL_SHIFT_SECONDS,
         },
       },
       {

@@ -32,7 +32,11 @@ function event(at: string, payload: Record<string, unknown>) {
   };
 }
 
-function foundation(bench = [ids.e, ids.f]) {
+/*
+ * Testerna räknar på några minuter långa matcher, så grundmatchen har en kort
+ * bytestid. Förvalet på fyra minuter prövas separat nedan.
+ */
+function foundation(bench = [ids.e, ids.f], idealShiftSeconds: number | null = 60) {
   counter = 0;
   return [
     event('2026-09-20T13:00:00.000Z', {
@@ -42,6 +46,8 @@ function foundation(bench = [ids.e, ids.f]) {
       periods: 1,
       periodLengthSeconds: 1_200,
       opponent: 'IF Test',
+      // null efterliknar en match skapad innan fältet fanns.
+      ...(idealShiftSeconds === null ? {} : { idealShiftSeconds }),
     }),
     event('2026-09-20T13:00:00.000Z', { type: 'squad_set', players: allPlayers }),
     event('2026-09-20T13:00:00.000Z', {
@@ -67,7 +73,7 @@ function at(seconds: number): Date {
 
 describe('deriveFairnessState', () => {
   it('uses fair share, reports when a swap is due, and suggests the two extremes', () => {
-    const fairness = deriveFairnessState(foundation(), at(120), { debtThresholdMs: 60_000 });
+    const fairness = deriveFairnessState(foundation(), at(120));
 
     expect(fairness.rotatingSlotCount).toBe(4);
     expect(fairness.goalkeeperPlayers).toHaveLength(1);
@@ -204,7 +210,7 @@ describe('målvakt som roteras ut', () => {
   }
 
   it('räknar med den utbytta målvakten i rotationen', () => {
-    const fairness = deriveFairnessState(withKeeperSwap(), at(240), { debtThresholdMs: 60_000 });
+    const fairness = deriveFairnessState(withKeeperSwap(), at(240));
 
     const keeper = fairness.rotationPlayers.find((player) => player.playerId === ids.gk);
     expect(keeper).toBeDefined();
@@ -224,7 +230,7 @@ describe('målvakt som roteras ut', () => {
   });
 
   it('ställer henne i kön utan att tiden i mål räknas för eller emot henne', () => {
-    const fairness = deriveFairnessState(withKeeperSwap(), at(240), { debtThresholdMs: 30_000 });
+    const fairness = deriveFairnessState(withKeeperSwap(), at(240));
     const debt = (playerId: string) =>
       fairness.players.find((player) => player.playerId === playerId)?.debtMs;
 
@@ -245,17 +251,74 @@ describe('målvakt som roteras ut', () => {
         from: '2026-09-20T13:00:00.000Z',
       }),
     ];
-    const fairness = deriveFairnessState(log, at(240), { debtThresholdMs: 30_000 });
+    const fairness = deriveFairnessState(log, at(240));
 
     expect(fairness.substitutionDue).toBe(true);
     expect(fairness.suggestedSubstitution?.inPlayerId).toBe(ids.gk);
   });
 
   it('lämnar ett lag med fast målvakt oförändrat', () => {
-    const fairness = deriveFairnessState(foundation(), at(120), { debtThresholdMs: 60_000 });
+    const fairness = deriveFairnessState(foundation(), at(120));
 
     expect(fairness.rotatingSlotCount).toBe(4);
     expect(fairness.goalkeeperPlayers.map((player) => player.playerId)).toEqual([ids.gk]);
     expect(fairness.rotationPlayers.some((player) => player.playerId === ids.gk)).toBe(false);
+  });
+});
+
+describe('bytestid', () => {
+  it('föreslår ingen utbytt spelare innan hon spelat klart sitt pass', () => {
+    const fairness = deriveFairnessState(foundation(undefined, 240), at(120));
+
+    expect(fairness.idealShiftMs).toBe(240_000);
+    expect(fairness.substitutionDue).toBe(false);
+    // Alla fyra utespelare gick in vid avspark och har två minuter kvar.
+    expect(fairness.timeToNextSubstitutionMs).toBe(120_000);
+  });
+
+  it('gör bytet befogat när passet är slut och bänken ligger efter', () => {
+    const fairness = deriveFairnessState(foundation(undefined, 240), at(240));
+
+    expect(fairness.substitutionDue).toBe(true);
+    expect(fairness.timeToNextSubstitutionMs).toBe(0);
+    expect(fairness.suggestedSubstitution?.inPlayerId).toBe(ids.e);
+  });
+
+  it('startar om passet för den som byts in', () => {
+    const log = [
+      ...foundation(undefined, 240),
+      event('2026-09-20T13:04:00.000Z', {
+        type: 'substitution_confirmed',
+        swaps: [{ slotId: 'cb', outPlayerId: ids.a, inPlayerId: ids.e }],
+      }),
+    ];
+    const fairness = deriveFairnessState(log, at(300));
+    const shift = (playerId: string) =>
+      fairness.players.find((player) => player.playerId === playerId)?.currentShiftMs;
+
+    expect(shift(ids.e)).toBe(60_000);
+    expect(shift(ids.a)).toBe(0);
+    expect(shift(ids.b)).toBe(300_000);
+  });
+
+  it('räknar inte en pausad klocka som speltid i passet', () => {
+    const log = [
+      ...foundation(undefined, 240),
+      event('2026-09-20T13:01:00.000Z', { type: 'clock_paused', reason: 'Skada' }),
+      event('2026-09-20T13:03:00.000Z', { type: 'clock_resumed' }),
+    ];
+    const fairness = deriveFairnessState(log, at(240));
+
+    // Fyra minuter på väggklockan, men två av dem stod klockan still.
+    expect(fairness.players.find((player) => player.playerId === ids.a)?.currentShiftMs).toBe(
+      120_000,
+    );
+    expect(fairness.substitutionDue).toBe(false);
+  });
+
+  it('ger äldre matcher utan bytestid förvalet på fyra minuter', () => {
+    const fairness = deriveFairnessState(foundation(undefined, null), at(120));
+
+    expect(fairness.idealShiftMs).toBe(240_000);
   });
 });

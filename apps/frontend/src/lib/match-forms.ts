@@ -9,7 +9,7 @@ export const createMatchResolver = zodResolver(createMatchFormSchema);
 
 export type MatchSetupDefaults = Pick<
   CreateMatchFormValues,
-  'format' | 'formationId' | 'periodCount' | 'periodLengthSeconds'
+  'format' | 'formationId' | 'periodCount' | 'periodLengthSeconds' | 'idealShiftSeconds'
 >;
 
 const defaultPrefix = 'coach-clock.match-setup.';
@@ -18,7 +18,13 @@ export function loadMatchSetupDefaults(teamId: string): MatchSetupDefaults | und
   try {
     const saved: unknown = JSON.parse(localStorage.getItem(`${defaultPrefix}${teamId}`) ?? 'null');
     const parsed = createMatchFormSchema
-      .pick({ format: true, formationId: true, periodCount: true, periodLengthSeconds: true })
+      .pick({
+        format: true,
+        formationId: true,
+        periodCount: true,
+        periodLengthSeconds: true,
+        idealShiftSeconds: true,
+      })
       .safeParse(saved);
     return parsed.success ? parsed.data : undefined;
   } catch {
