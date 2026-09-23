@@ -16,6 +16,7 @@
     "format:check": "prettier --check .",
     "docker:up": "docker compose -f docker/docker-compose.yml up -d --wait",
     "docker:db": "docker compose -f docker/docker-compose.yml up -d --wait postgres",
+    "docker:test-db": "sh docker/create-test-db.sh",
     "docker:down": "docker compose -f docker/docker-compose.yml down"
   },
   "devDependencies": {
