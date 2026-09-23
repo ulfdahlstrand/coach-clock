@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Link, createFileRoute } from '@tanstack/react-router';
-import { CopyIcon, QrCodeIcon, UsersIcon } from 'lucide-react';
+import { CopyIcon, QrCodeIcon, TimerIcon, UsersIcon } from 'lucide-react';
 import { toDataURL } from 'qrcode';
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -112,8 +112,17 @@ function MatchSharePage() {
   return (
     <section className="space-y-6 pb-8">
       <div className="space-y-2">
-        <Link to="/" className="text-muted-foreground text-sm underline underline-offset-4">
-          Till startsidan
+        {/*
+         * Matchen är redan igång när den här sidan visas, så vägen in i den är
+         * sidans viktigaste utgång — inte startsidan, som ändå ligger i menyn.
+         * Länken här räcker när deltagarlistan gjort sidan lång att scrolla.
+         */}
+        <Link
+          to="/matches/$matchId"
+          params={{ matchId }}
+          className="text-muted-foreground text-sm underline underline-offset-4"
+        >
+          Till matchen
         </Link>
         <p className="text-muted-foreground text-sm font-medium tracking-wide">DELA MATCH</p>
         <h1 className="text-3xl font-semibold tracking-tight">Bjud in föräldrar</h1>
@@ -237,6 +246,14 @@ function MatchSharePage() {
           ))}
         </ul>
       </div>
+
+      {/* Delningen är ett sidospår — det här är vad tränaren ska göra härnäst. */}
+      <Button asChild size="lg" className="min-h-touch w-full rounded-xl text-base">
+        <Link to="/matches/$matchId" params={{ matchId }}>
+          <TimerIcon aria-hidden="true" />
+          Till matchen
+        </Link>
+      </Button>
     </section>
   );
 }

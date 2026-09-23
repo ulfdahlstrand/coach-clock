@@ -1,5 +1,7 @@
 import {
+  DEFAULT_IDEAL_SHIFT_SECONDS,
   parseMatchEventLog,
+  type PositionMode,
   type IgnoredMatchEvent,
   type MatchEvent,
   type SquadPlayer,
@@ -19,6 +21,17 @@ export type DerivedPlayerState = {
   readonly timeBySlotId: Readonly<Record<string, number>>;
   readonly timeByRole: Readonly<Partial<Record<MatchPlayerRole, number>>>;
   readonly currentSlotId: string | null;
+  /**
+   * Hur länge spelaren varit på planen i sitt pågående pass, i matchtid —
+   * en pausad klocka räknas inte. 0 för den som sitter på bänken.
+   */
+  readonly currentShiftMs: number;
+  /**
+   * Spelarens bästa lagdel: den hon stod på i startuppställningen, eller för
+   * den som började på bänken den första plats hon sattes in på. null innan
+   * hon varit på planen (#91).
+   */
+  readonly bestRole: MatchPlayerRole | null;
 };
 
 export type PlannedSubstitution = {
@@ -59,6 +72,10 @@ export type DerivedMatchState = {
   readonly formationId: string | null;
   readonly ended: boolean;
   readonly clock: MatchClock;
+  /** Önskad bytestid ur match_created, eller förvalet för äldre matcher. */
+  readonly idealShiftMs: number;
+  /** Hur bytesförslagen tar hänsyn till positioner, eller `time` för äldre matcher. */
+  readonly positionMode: PositionMode;
   readonly players: Readonly<Record<string, DerivedPlayerState>>;
   /** `slotId -> playerId`. */
   readonly currentSlots: Readonly<Record<string, string>>;
@@ -108,6 +125,8 @@ function emptyState(ignored: readonly MatchStateIgnoredEvent[] = []): DerivedMat
     formationId: null,
     ended: false,
     clock: EMPTY_CLOCK,
+    idealShiftMs: DEFAULT_IDEAL_SHIFT_SECONDS * 1_000,
+    positionMode: 'time',
     players: {},
     currentSlots: {},
     bench: [],
@@ -418,6 +437,12 @@ function deriveMatchStateInternal(input: unknown, now: Date): DerivedMatchState 
   const substitutedInAt = new Map<string, number>();
   let formationId: string | null = null;
   let ended = false;
+  let idealShiftMs = DEFAULT_IDEAL_SHIFT_SECONDS * 1_000;
+  let positionMode: PositionMode = 'time';
+  /** Första lagdelen varje spelare ställdes på — hennes bästa. */
+  const bestRoles = new Map<string, MatchPlayerRole>();
+  /** Matchtid då varje spelare på planen gick in i sitt pågående pass. */
+  const shiftStartedAt = new Map<string, number>();
   let lineupWasSet = false;
   let cursorMs = effective[0]?.atMs ?? nowMs;
 
@@ -459,7 +484,11 @@ function deriveMatchStateInternal(input: unknown, now: Date): DerivedMatchState 
     switch (event.type) {
       case 'match_created':
         if (formationId !== null) ignoreTransition(entry, 'matchen har redan skapats');
-        else formationId = event.formationId;
+        else {
+          formationId = event.formationId;
+          if (event.idealShiftSeconds !== undefined) idealShiftMs = event.idealShiftSeconds * 1_000;
+          if (event.positionMode !== undefined) positionMode = event.positionMode;
+        }
         break;
 
       case 'squad_set':
@@ -502,8 +531,14 @@ function deriveMatchStateInternal(input: unknown, now: Date): DerivedMatchState 
         } else {
           slots.clear();
           bench.clear();
+          shiftStartedAt.clear();
+          const startedAt = elapsedAt(clock.segments, entry.atMs);
           for (const assignment of event.assignments) {
             slots.set(assignment.slotId, assignment.playerId);
+            shiftStartedAt.set(assignment.playerId, startedAt);
+            if (!bestRoles.has(assignment.playerId)) {
+              bestRoles.set(assignment.playerId, playerRole(assignment.slotId));
+            }
           }
           for (const playerId of event.bench) bench.add(playerId);
           lineupWasSet = true;
@@ -626,6 +661,10 @@ function deriveMatchStateInternal(input: unknown, now: Date): DerivedMatchState 
           bench.delete(swap.inPlayerId);
           bench.add(swap.outPlayerId);
           substitutedInAt.set(swap.inPlayerId, atElapsedMs);
+          shiftStartedAt.set(swap.inPlayerId, atElapsedMs);
+          shiftStartedAt.delete(swap.outPlayerId);
+          if (!bestRoles.has(swap.inPlayerId))
+            bestRoles.set(swap.inPlayerId, playerRole(swap.slotId));
         }
         if (event.planId !== undefined) plans.delete(event.planId);
         break;
@@ -651,11 +690,19 @@ function deriveMatchStateInternal(input: unknown, now: Date): DerivedMatchState 
   const currentSlotByPlayer = new Map<string, string>();
   for (const [slotId, playerId] of slots) currentSlotByPlayer.set(playerId, slotId);
 
+  const elapsedNow = elapsedAt(clock.segments, nowMs);
   const playerOutput: Record<string, DerivedPlayerState> = {};
   for (const [playerId, player] of players) {
+    const currentSlotId = currentSlotByPlayer.get(playerId) ?? null;
+    const shiftStart = shiftStartedAt.get(playerId);
     playerOutput[playerId] = {
       ...player,
-      currentSlotId: currentSlotByPlayer.get(playerId) ?? null,
+      currentSlotId,
+      currentShiftMs:
+        currentSlotId === null || shiftStart === undefined
+          ? 0
+          : Math.max(0, elapsedNow - shiftStart),
+      bestRole: bestRoles.get(playerId) ?? null,
     };
   }
 
@@ -664,6 +711,8 @@ function deriveMatchStateInternal(input: unknown, now: Date): DerivedMatchState 
     formationId,
     ended,
     clock,
+    idealShiftMs,
+    positionMode,
     players: playerOutput,
     currentSlots: Object.fromEntries(slots),
     bench: [...bench],

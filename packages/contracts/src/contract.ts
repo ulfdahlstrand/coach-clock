@@ -1,6 +1,11 @@
 import { oc } from '@orpc/contract';
 import { z } from 'zod';
-import { matchEventSchema, matchFormatSchema, slotAssignmentSchema } from './events.js';
+import {
+  matchEventSchema,
+  matchFormatSchema,
+  positionModeSchema,
+  slotAssignmentSchema,
+} from './events.js';
 import {
   createPlayerInputSchema,
   createPlayerOutputSchema,
@@ -37,11 +42,30 @@ const uniqueIds = (values: readonly string[]) => new Set(values).size === values
 /** Allt som behövs för att skapa en match och dess första, spelbara uppställning. */
 export const createMatchInputSchema = z.object({
   teamId: z.uuid(),
-  opponent: z.string().trim().min(1).max(200),
+  // Svenska meddelanden där formulären visar dem rakt av — se teams.ts.
+  opponent: z
+    .string()
+    .trim()
+    .min(1, 'Ange motståndare')
+    .max(200, 'Motståndarens namn får vara högst 200 tecken'),
   format: matchFormatSchema,
   formationId: z.string().min(1).max(64),
-  periodCount: z.int().min(1).max(10),
-  periodLengthSeconds: z.int().min(1).max(7200),
+  periodCount: z.int().min(1, 'Minst en period').max(10, 'Högst tio perioder'),
+  periodLengthSeconds: z
+    .int()
+    .min(1, 'Perioden måste vara minst en minut')
+    .max(7200, 'Perioden får vara högst två timmar'),
+  /**
+   * Önskad bytestid (#82). Valfri i API:t så att en äldre, cachad klient kan
+   * skapa matcher; backenden fyller då i DEFAULT_IDEAL_SHIFT_SECONDS.
+   */
+  idealShiftSeconds: z
+    .int()
+    .min(60, 'Bytestiden måste vara minst en minut')
+    .max(1200, 'Bytestiden får vara högst 20 minuter')
+    .optional(),
+  /** Hur bytesförslagen tar hänsyn till positioner (#91). Saknas det gäller `time`. */
+  positionMode: positionModeSchema.optional(),
   presentPlayerIds: z.array(z.uuid()).min(1).refine(uniqueIds, 'Spelarna måste vara unika'),
   assignments: z.array(slotAssignmentSchema).min(1),
 });
@@ -101,7 +125,11 @@ export const joinMatchContract = oc
   .input(
     z
       .object({
-        displayName: z.string().trim().min(1).max(100),
+        displayName: z
+          .string()
+          .trim()
+          .min(1, 'Ange ditt namn')
+          .max(100, 'Namnet får vara högst 100 tecken'),
         code: joinCodeSchema.optional(),
         linkToken: linkTokenSchema.optional(),
       })
@@ -137,7 +165,11 @@ export const joinAsRefereeContract = oc
   })
   .input(
     z.object({
-      displayName: z.string().trim().min(1).max(100),
+      displayName: z
+        .string()
+        .trim()
+        .min(1, 'Ange ditt namn')
+        .max(100, 'Namnet får vara högst 100 tecken'),
       linkToken: linkTokenSchema,
     }),
   )
