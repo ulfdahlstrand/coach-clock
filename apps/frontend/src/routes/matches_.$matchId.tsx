@@ -30,6 +30,17 @@ type WakeLockSentinelLike = { release(): Promise<void> };
 type WakeLockNavigator = Navigator & {
   wakeLock?: { request(type: 'screen'): Promise<WakeLockSentinelLike> };
 };
+/**
+ * Servern sa definitivt nej. Skild från ett tillfälligt fel, eftersom de två
+ * ska behandlas tvärtemot varandra: det tillfälliga köas, det nekade ångras.
+ */
+class EventRejectedError extends Error {
+  constructor() {
+    super('Servern nekade händelsen.');
+    this.name = 'EventRejectedError';
+  }
+}
+
 type ClientMatchEvent = MatchEvent extends infer Event
   ? Event extends MatchEvent
     ? Omit<Event, 'eventId' | 'at' | 'matchId' | 'v' | 'by'>
@@ -280,6 +291,9 @@ function LiveMatchPage() {
     mutationFn: async (event: MatchEvent) => {
       await eventOutbox.enqueue(event);
       const result = await eventOutbox.drain((pending) => apiClient.matches.events(pending));
+      if (result.rejected.some((entry) => entry.event.eventId === event.eventId)) {
+        throw new EventRejectedError();
+      }
       if (result.failedEventId === event.eventId)
         throw new Error('Kunde inte synka händelsen ännu.');
     },
@@ -287,6 +301,16 @@ function LiveMatchPage() {
       setOptimisticEvents((old) => old.filter((candidate) => candidate.eventId !== event.eventId));
       void queryClient.invalidateQueries({ queryKey: ['match-events', matchId] });
       void queryClient.invalidateQueries({ queryKey: ['match', matchId] });
+    },
+    onError: (error, event) => {
+      /*
+       * Ett tillfälligt fel betyder att händelsen ligger kvar i kön — då ska den
+       * synas på planen, för det är hela poängen med offline-läget. Ett nekat
+       * svar betyder motsatsen: den kommer aldrig fram, och får inte ligga kvar
+       * och se ut som att bytet är gjort.
+       */
+      if (!(error instanceof EventRejectedError)) return;
+      setOptimisticEvents((old) => old.filter((candidate) => candidate.eventId !== event.eventId));
     },
   });
 
@@ -794,7 +818,9 @@ function LiveMatchPage() {
         ) : null}
         {append.error ? (
           <p role="alert" className="text-destructive text-center text-sm">
-            Händelsen sparades i kön och skickas igen automatiskt.
+            {append.error instanceof EventRejectedError
+              ? 'Servern nekade åtgärden, så den har ångrats. Kontrollera att du har behörighet i matchen.'
+              : 'Händelsen sparades i kön och skickas igen automatiskt.'}
           </p>
         ) : null}
 
