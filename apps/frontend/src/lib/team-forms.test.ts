@@ -6,6 +6,13 @@ test('lagformuläret delar kontraktets krav på ett namn', () => {
   expect(createTeamFormSchema.safeParse({ name: ' ' }).success).toBe(false);
 });
 
+test('ett tomt namn ger ett svenskt meddelande, inte Zods engelska standardtext', () => {
+  // Formulären visar meddelandet rakt av, så det måste gå att läsa för en tränare.
+  expect(createTeamFormSchema.safeParse({ name: '' }).error?.issues[0]?.message).toBe(
+    'Ange ett namn',
+  );
+});
+
 test('spelarformuläret accepterar frivilligt nummer och målvaktsroll', () => {
   expect(
     createPlayerFormSchema.safeParse({ name: 'Alva', number: null, isGoalkeeper: true }).success,

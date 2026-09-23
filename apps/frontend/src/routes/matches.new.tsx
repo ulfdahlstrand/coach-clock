@@ -147,8 +147,15 @@ function MatchSetupPage() {
             <input
               className="border-input bg-background min-h-touch w-full rounded-lg border px-3"
               placeholder="Till exempel Grön IF"
+              aria-invalid={form.formState.errors.opponent !== undefined}
               {...form.register('opponent')}
             />
+            {/* Felet hör till fältet. Längst ned i formuläret såg det ut att gälla uppställningen. */}
+            {form.formState.errors.opponent ? (
+              <span className="text-destructive block text-sm">
+                {form.formState.errors.opponent.message}
+              </span>
+            ) : null}
           </label>
           <div className="grid grid-cols-2 gap-3">
             <label className="space-y-2">
@@ -285,9 +292,6 @@ function MatchSetupPage() {
               ))}
             </div>
           </div>
-        ) : null}
-        {form.formState.errors.opponent ? (
-          <p className="text-destructive text-sm">{form.formState.errors.opponent.message}</p>
         ) : null}
         {form.formState.errors.assignments ? (
           <p className="text-destructive text-sm">Fyll alla platser med olika spelare.</p>

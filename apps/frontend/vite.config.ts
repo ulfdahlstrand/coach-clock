@@ -81,6 +81,21 @@ export default defineConfig({
     // 5174 är frontendens reserverade port (fc-app 4173, backend 4002, Postgres 5434).
     port: 5174,
     strictPort: true,
+    // Tunnlar (ngrok) serverar sidan under ett annat värdnamn än localhost.
+    allowedHosts: ['.ngrok-free.app', '.ngrok.app', '.ngrok.io'],
+    proxy: {
+      /*
+       * Samma /api-prefix som driftsättningen använder (docs/deployment.md), så
+       * att en tunnel bara behöver exponera frontenden: API:t når man då över
+       * samma origin och varken CORS eller cookie-gränser ställer till det.
+       * Kräver VITE_API_URL=/api.
+       */
+      '/api': {
+        target: 'http://localhost:4002',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+    },
   },
   preview: {
     port: 5174,
