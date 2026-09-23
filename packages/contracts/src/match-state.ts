@@ -168,13 +168,17 @@ function eventIgnored(
   };
 }
 
+/*
+ * Lika tidsstämplar avgörs av loggens ordning, inte av eventId. Backenden
+ * skriver matchens fyra skapelsehändelser i en och samma transaktion med ett
+ * gemensamt `now`, så tiden skiljer dem inte åt — men `squad_set` måste ändå
+ * läsas före `lineup_set`. Ett slumpat uuid som likabrytare kastade om dem i
+ * ungefär varannan match, och då förkastades hela uppställningen eftersom
+ * ingen spelare fanns i truppen ännu (#79). Determinismen mellan enheter
+ * behålls: alla klienter läser samma logg i serverns ordning.
+ */
 function sortTimed(left: TimedEvent, right: TimedEvent): number {
-  return (
-    left.atMs - right.atMs ||
-    (left.event.eventId < right.event.eventId
-      ? -1
-      : Number(left.event.eventId > right.event.eventId))
-  );
+  return left.atMs - right.atMs || left.index - right.index;
 }
 
 function playerRole(slotId: string): MatchPlayerRole {
