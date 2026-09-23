@@ -1,0 +1,75 @@
+# Render Blueprint — coach-clocks driftsatta form.
+# Uppsättning och ordningen vid första deployen: docs/deployment.md
+#
+# Postgres saknas medvetet här. Renders gratisdatabas raderas 30 dagar efter att
+# den skapats, så DATABASE_URL pekar på ett externt Neon-projekt i stället.
+#
+# `sync: false` betyder "frågas efter en gång, sparas i Render, committas aldrig".
+# Allt annat i filen är ofarligt att ha i git.
+
+services:
+  # ---------------------------------------------------------------------------
+  # Frontend — Vite-bygget som serveras från Renders CDN. Statiska sajter är
+  # gratis permanent och drar inga instanstimmar, så den här halvan sover aldrig.
+  # ---------------------------------------------------------------------------
+  - type: web
+    runtime: static
+    name: coach-clock-web
+    # --include=dev är inte valfritt: NODE_ENV=production får npm att hoppa över
+    # devDependencies, och bygget behöver typescript och vite därifrån.
+    # turbo (inte npm --workspace) så att @coach-clock/contracts byggs först.
+    buildCommand: npm ci --include=dev && npx turbo build --filter=@coach-clock/frontend
+    staticPublishPath: apps/frontend/dist
+    envVars:
+      # En sökväg, inte en värd: API:t nås genom /api-rewriten nedan, på sajtens
+      # eget origin. Bakas in i bundlen vid byggtid.
+      - key: VITE_API_URL
+        value: /api
+    routes:
+      # Lägger API:t på samma origin som appen. Deltagarcookien
+      # (coach_clock_participant) är SameSite=Lax — anropar webbläsaren
+      # coach-clock-api direkt blir den tredjeparts, och iOS och Firefox slänger
+      # den. Felet är elakt: man går med i matchen, allt ser rätt ut, och sedan
+      # är varje anrop anonymt. Måste ligga före catch-allen, som annars
+      # skulle svälja /api.
+      - type: rewrite
+        source: /api/*
+        destination: https://coach-clock-api.onrender.com/*
+      # TanStack Router äger sökvägarna; utan den här returnerar varje direktlänk
+      # och omladdning under / CDN:ens 404 i stället för appen.
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+  # ---------------------------------------------------------------------------
+  # Backend — node:http + oRPC. Gratisinstanser somnar efter 15 minuter utan
+  # trafik och tar ungefär en minut att vakna. SSE-strömmen håller instansen
+  # vaken så länge någon har matchvyn öppen; kallstarten drabbar den som öppnar
+  # appen först.
+  # ---------------------------------------------------------------------------
+  - type: web
+    runtime: node
+    name: coach-clock-api
+    plan: free
+    region: frankfurt
+    # Migrationerna körs här i stället för som pre-deploy-kommando, vilket Render
+    # bara erbjuder på betalda instanser. Byggtid betyder en gång per deploy,
+    # innan den nya koden är live, och utanför kallstarten.
+    buildCommand: >-
+      npm ci --include=dev &&
+      npx turbo build --filter=@coach-clock/backend &&
+      npm run migrate --workspace @coach-clock/backend
+    startCommand: node apps/backend/dist/index.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Neons anslutningssträng. Använd sslmode=verify-full: `require` verifierar
+      # fortfarande i pg 8.x men loggar en deprecation-varning vid varje start.
+      - key: DATABASE_URL
+        sync: false
+      # coach-clock-webs URL. Behövs inte för appens egna anrop — de går genom
+      # /api-rewriten och är därmed same-origin — men håller CORS-listan vid
+      # den riktiga frontenden i stället för dev-defaulten localhost:5174.
+      - key: CORS_ORIGIN
+        sync: false

@@ -49,6 +49,12 @@ Alla kommandon körs via [Turborepo](https://turbo.build) över workspaces.
 Enhetstesterna (`npm test`) rör aldrig databasen — Kysely-klienten är en lazy singleton
 och ansluter först när någon faktiskt frågar.
 
+## Driftsättning
+
+Två tjänster på Render (statisk frontend + Node-API) med Neon som databas, allt
+deklarerat i [`render.yaml`](render.yaml). Uppsättning, miljövariabler och
+felsökning: [docs/deployment.md](docs/deployment.md).
+
 ## Krav
 
 - Node.js 20 eller senare

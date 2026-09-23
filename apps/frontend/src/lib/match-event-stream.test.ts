@@ -2,11 +2,26 @@ import { describe, expect, test, vi } from 'vitest';
 import type { SequencedMatchEvent } from '@coach-clock/contracts';
 import {
   createMatchEventStream,
+  streamUrl,
   type EventSourceLike,
   type VisibilitySource,
 } from './match-event-stream';
 
 const matchId = '00000000-0000-4000-8000-000000000001';
+
+describe('streamUrl', () => {
+  test('keeps the /api prefix the deployed rewrite depends on', () => {
+    expect(streamUrl(matchId, 'https://coach-clock-web.onrender.com/api')).toBe(
+      `https://coach-clock-web.onrender.com/api/matches/stream?matchId=${matchId}`,
+    );
+  });
+
+  test('works against a bare origin in development', () => {
+    expect(streamUrl(matchId, 'http://localhost:4002')).toBe(
+      `http://localhost:4002/matches/stream?matchId=${matchId}`,
+    );
+  });
+});
 
 function event(seq: number): SequencedMatchEvent {
   return {
