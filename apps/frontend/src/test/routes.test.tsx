@@ -60,6 +60,9 @@ test('/matches/new har bytestiden förvald till fyra minuter', async () => {
 
 test('/matches/$matchId/summary renderar en delningsbar matchsammantällning', async () => {
   await renderAt('/matches/00000000-0000-4000-8000-000000000001/summary');
+  // Händelselistan med rättningar bor här sedan #90, inte i matchvyn.
+  expect(screen.getByRole('heading', { name: 'Händelser' })).toBeDefined();
+  expect(screen.getByRole('list', { name: 'Matchens händelser' })).toBeDefined();
   expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Matchsammanfattning');
 });
 
