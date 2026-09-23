@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { createMatchInputSchema } from '@coach-clock/contracts';
+import { createMatchInputSchema, type PositionMode } from '@coach-clock/contracts';
 import { z } from 'zod';
 
 /** Matchstartens formulär delar exakt samma validering som API:t. */
@@ -9,7 +9,12 @@ export const createMatchResolver = zodResolver(createMatchFormSchema);
 
 export type MatchSetupDefaults = Pick<
   CreateMatchFormValues,
-  'format' | 'formationId' | 'periodCount' | 'periodLengthSeconds' | 'idealShiftSeconds'
+  | 'format'
+  | 'formationId'
+  | 'periodCount'
+  | 'periodLengthSeconds'
+  | 'idealShiftSeconds'
+  | 'positionMode'
 >;
 
 const defaultPrefix = 'coach-clock.match-setup.';
@@ -24,6 +29,7 @@ export function loadMatchSetupDefaults(teamId: string): MatchSetupDefaults | und
         periodCount: true,
         periodLengthSeconds: true,
         idealShiftSeconds: true,
+        positionMode: true,
       })
       .safeParse(saved);
     return parsed.success ? parsed.data : undefined;
@@ -66,5 +72,13 @@ export function applyTeamDefaults(
     ...(pick('idealShiftSeconds') === undefined
       ? {}
       : { idealShiftSeconds: pick('idealShiftSeconds') }),
+    ...(pick('positionMode') === undefined ? {} : { positionMode: pick('positionMode') }),
   };
 }
+
+/** Etiketter för positionslägena i bytesförslagen (#91). */
+export const POSITION_MODE_LABELS: Readonly<Record<PositionMode, string>> = {
+  time: 'Bara speltid',
+  best: 'Bästa positioner',
+  even: 'Jämn fördelning',
+};
