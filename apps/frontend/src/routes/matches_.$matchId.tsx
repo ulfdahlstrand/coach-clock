@@ -9,14 +9,14 @@ import {
   type SequencedMatchEvent,
   type SubstitutionSwap,
 } from '@coach-clock/contracts';
-import { PauseIcon, PlayIcon, SquareIcon } from 'lucide-react';
+import { FlagIcon, PauseIcon, PlayIcon, SquareIcon } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { BenchGrid, formationAssignments, MatchPitch } from '@/components/match-pitch';
 import { apiClient } from '@/lib/api-client';
 import { eventOutbox, startOutboxDrainer, withClientEventId } from '@/lib/event-outbox';
 import { createMatchEventStream } from '@/lib/match-event-stream';
-import { deriveVisibleMatchClock, formatClock } from '@/lib/match-clock-view';
+import { deriveVisibleMatchClock, formatClock, matchControlState } from '@/lib/match-clock-view';
 import {
   becameSubstitutionDue,
   formatNextSubstitution,
@@ -255,7 +255,13 @@ function LiveMatchPage() {
   const currentPeriodEnded =
     activePeriod > 0 &&
     eventLog.some((event) => event.type === 'period_ended' && event.periodNumber === activePeriod);
-  const isFinalPeriod = match.data !== undefined && activePeriod >= match.data.periodCount;
+  const { status, startLabel, matchOver } = matchControlState({
+    periodNumber: clock?.periodNumber,
+    running: clock?.running === true,
+    currentPeriodEnded,
+    periodCount: match.data?.periodCount,
+    ended: matchState.ended,
+  });
   useScreenWakeLock(clock?.running === true);
 
   useEffect(() => {
@@ -412,8 +418,9 @@ function LiveMatchPage() {
     setSelectedSlotId(undefined);
   }
 
-  const periodLabel =
-    clock?.periodNumber === null || clock?.periodNumber === undefined
+  const periodLabel = matchState.ended
+    ? 'Slutspelad'
+    : clock?.periodNumber === null || clock?.periodNumber === undefined
       ? 'Redo att starta'
       : `Period ${clock.periodNumber}${match.data ? ` av ${match.data.periodCount}` : ''}`;
 
@@ -434,7 +441,7 @@ function LiveMatchPage() {
                 : 'rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-muted-foreground'
             }
           >
-            {clock?.running ? 'PÅGÅR' : 'PAUS'}
+            {status}
           </span>
         </header>
 
@@ -455,6 +462,57 @@ function LiveMatchPage() {
             </span>
           </div>
         </div>
+
+        {/*
+         * Klockan styrs härifrån när det inte finns någon domare, så knapparna
+         * ligger direkt under den i stället för längst ner på sidan (#89).
+         */}
+        {matchState.ended ? (
+          <p role="status" className="text-muted-foreground text-center text-sm">
+            Matchen är slut.
+          </p>
+        ) : matchOver ? (
+          <Button
+            size="lg"
+            className="min-h-[5.25rem] w-full rounded-2xl text-base"
+            disabled={append.isPending || serverTime.data === undefined}
+            onClick={() => appendEvent({ type: 'match_ended' })}
+          >
+            <FlagIcon aria-hidden="true" /> Avsluta match
+          </Button>
+        ) : (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <Button
+                size="lg"
+                className="min-h-[5.25rem] rounded-2xl text-base"
+                disabled={append.isPending || serverTime.data === undefined || clock?.running}
+                onClick={startOrResume}
+              >
+                <PlayIcon aria-hidden="true" />
+                {startLabel}
+              </Button>
+              <Button
+                size="lg"
+                variant="secondary"
+                className="min-h-[5.25rem] rounded-2xl text-base"
+                disabled={append.isPending || !clock?.running || serverTime.data === undefined}
+                onClick={() => appendEvent({ type: 'clock_paused', reason: 'Paus' })}
+              >
+                <PauseIcon aria-hidden="true" /> Pausa
+              </Button>
+            </div>
+            <Button
+              size="lg"
+              variant="outline"
+              className="min-h-touch w-full rounded-2xl border-white/15 bg-transparent text-foreground hover:bg-secondary hover:text-foreground"
+              disabled={append.isPending || !clock?.running || serverTime.data === undefined}
+              onClick={endPeriod}
+            >
+              <SquareIcon aria-hidden="true" /> Avsluta period
+            </Button>
+          </div>
+        )}
 
         {formation === undefined ? null : (
           <div className="space-y-4">
@@ -792,44 +850,6 @@ function LiveMatchPage() {
             Händelsen sparades i kön och skickas igen automatiskt.
           </p>
         ) : null}
-
-        <div className="grid grid-cols-2 gap-3">
-          <Button
-            size="lg"
-            className="min-h-[5.25rem] rounded-2xl text-base"
-            disabled={
-              append.isPending ||
-              serverTime.data === undefined ||
-              (isFinalPeriod && clock?.running === false)
-            }
-            onClick={startOrResume}
-          >
-            <PlayIcon aria-hidden="true" />
-            {clock?.running
-              ? 'Spelar'
-              : clock?.periodNumber === null || clock?.periodNumber === undefined
-                ? 'Starta period 1'
-                : 'Fortsätt'}
-          </Button>
-          <Button
-            size="lg"
-            variant="secondary"
-            className="min-h-[5.25rem] rounded-2xl text-base"
-            disabled={append.isPending || !clock?.running || serverTime.data === undefined}
-            onClick={() => appendEvent({ type: 'clock_paused', reason: 'Paus' })}
-          >
-            <PauseIcon aria-hidden="true" /> Pausa
-          </Button>
-        </div>
-        <Button
-          size="lg"
-          variant="outline"
-          className="min-h-touch w-full rounded-2xl border-white/15 bg-transparent text-foreground hover:bg-secondary hover:text-foreground"
-          disabled={append.isPending || !clock?.running || serverTime.data === undefined}
-          onClick={endPeriod}
-        >
-          <SquareIcon aria-hidden="true" /> Avsluta period
-        </Button>
 
         <Link
           to="/matches/$matchId/summary"
