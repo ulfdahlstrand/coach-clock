@@ -1,6 +1,7 @@
 import { type MatchEvent, parseMatchEventLog } from './events.js';
 import { formations, outfieldSlotCount } from './formations.js';
-import { deriveMatchState, type DerivedMatchState } from './match-state.js';
+import type { PositionMode } from './events.js';
+import { deriveMatchState, type DerivedMatchState, type MatchPlayerRole } from './match-state.js';
 
 /**
  * Skuld som får ett spelarkort att lysa som eftersatt. Sedan #82 är den bara
@@ -36,6 +37,8 @@ export type SuggestedSubstitution = {
 export type FairnessState = {
   /** Minsta passlängd innan en utespelare föreslås ut. */
   readonly idealShiftMs: number;
+  /** Hur förslaget väljer plats för bytet (#91). */
+  readonly positionMode: PositionMode;
   readonly rotatingSlotCount: number;
   readonly players: readonly FairnessPlayer[];
   readonly rotationPlayers: readonly FairnessPlayer[];
@@ -282,6 +285,47 @@ export function deriveFairnessState(
       (left, right) => right.currentShiftMs - left.currentShiftMs || lowestDebt(left, right),
     )[0];
   const outgoingDone = outgoing !== undefined && outgoing.currentShiftMs >= idealShiftMs;
+
+  /*
+   * Positionsläget (#91) avgör bara vem av dem som spelat klart sitt pass som
+   * går ut — alltså på vilken plats bytet görs. När ett byte är befogat och
+   * vem som går in styrs av bytestid och skuld som vanligt, så tidsrättvisan
+   * inte urholkas. Passar ingen plats faller förslaget tillbaka på lägst skuld.
+   */
+  const positionMode = state.positionMode;
+  const slotRoles = new Map<string, string>(
+    (formation?.slots ?? []).map((slot) => [slot.id, slot.role]),
+  );
+  const roleOnPitch = (playerId: string): MatchPlayerRole | undefined => {
+    const slotId = state.players[playerId]?.currentSlotId;
+    const role = slotId === null || slotId === undefined ? undefined : slotRoles.get(slotId);
+    return role as MatchPlayerRole | undefined;
+  };
+  const incomingState = incoming === undefined ? undefined : state.players[incoming.playerId];
+  const suggestedOutgoing = ((): FairnessPlayer | undefined => {
+    if (incomingState === undefined || shiftDone.length === 0 || positionMode === 'time') {
+      return outgoing;
+    }
+    if (positionMode === 'best') {
+      const best = incomingState.bestRole;
+      // En målvakts bästa plats är i mål; som utespelare kan hon gå in var som helst.
+      if (best === null || best === 'goalkeeper' || best === 'unknown') return outgoing;
+      return (
+        [...shiftDone]
+          .filter((player) => roleOnPitch(player.playerId) === best)
+          .sort(lowestDebt)[0] ?? outgoing
+      );
+    }
+    const timeInRole = (player: FairnessPlayer) => {
+      const role = roleOnPitch(player.playerId);
+      return role === undefined ? Number.POSITIVE_INFINITY : (incomingState.timeByRole[role] ?? 0);
+    };
+    return (
+      [...shiftDone].sort(
+        (left, right) => timeInRole(left) - timeInRole(right) || lowestDebt(left, right),
+      )[0] ?? outgoing
+    );
+  })();
   const substitutionDue =
     incoming !== undefined && outgoingDone && incoming.debtMs > outgoing.debtMs;
   const timeToNextSubstitutionMs =
@@ -297,6 +341,7 @@ export function deriveFairnessState(
 
   return {
     idealShiftMs,
+    positionMode,
     rotatingSlotCount,
     players,
     rotationPlayers,
@@ -304,9 +349,9 @@ export function deriveFairnessState(
     substitutionDue,
     timeToNextSubstitutionMs,
     suggestedSubstitution:
-      incoming === undefined || outgoing === undefined
+      incoming === undefined || suggestedOutgoing === undefined
         ? null
-        : { outPlayerId: outgoing.playerId, inPlayerId: incoming.playerId },
+        : { outPlayerId: suggestedOutgoing.playerId, inPlayerId: incoming.playerId },
   };
 }
 

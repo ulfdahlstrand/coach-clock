@@ -68,3 +68,17 @@ describe('lagets förval', () => {
     expect(applyTeamDefaults(chosen, undefined, new Set())).toEqual(chosen);
   });
 });
+
+test('lagets förval minns positionsläget', () => {
+  const teamId = '00000000-0000-4000-8000-000000000010';
+  saveMatchSetupDefaults(teamId, {
+    format: 7,
+    formationId: '7v7-2-3-1',
+    periodCount: 3,
+    periodLengthSeconds: 900,
+    idealShiftSeconds: 240,
+    positionMode: 'even',
+  });
+
+  expect(loadMatchSetupDefaults(teamId)?.positionMode).toBe('even');
+});

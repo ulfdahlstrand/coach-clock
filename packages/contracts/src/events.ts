@@ -110,6 +110,18 @@ function event<T extends string, P extends z.ZodRawShape>(type: T, payload: P) {
 /** Förvald bytestid: så länge en utespelare spelar innan hon föreslås ut. */
 export const DEFAULT_IDEAL_SHIFT_SECONDS = 240;
 
+/**
+ * Hur bytesförslagen tar hänsyn till positioner (#91). Läget avgör bara på
+ * vilken plats ett byte görs — när det görs och vem som går in styrs av
+ * bytestid och skuld som vanligt.
+ * - `time`: bara speltid (förval)
+ * - `best`: låt spelarna spela sin bästa lagdel
+ * - `even`: fördela speltid jämnt även över lagdelarna
+ */
+export const POSITION_MODES = ['time', 'best', 'even'] as const;
+export const positionModeSchema = z.enum(POSITION_MODES);
+export type PositionMode = z.infer<typeof positionModeSchema>;
+
 /** Matchen skapas: spelform, startformation, periodupplägg och motståndare. */
 export const matchCreatedSchema = event('match_created', {
   format: matchFormatSchema,
@@ -122,6 +134,8 @@ export const matchCreatedSchema = event('match_created', {
    * fortfarande går att läsa — de får DEFAULT_IDEAL_SHIFT_SECONDS.
    */
   idealShiftSeconds: z.int().min(60).max(1200).optional(),
+  /** Valfritt av samma skäl som bytestiden; saknas det gäller `time`. */
+  positionMode: positionModeSchema.optional(),
 });
 
 /** Truppen sätts (eller sätts om innan avspark). */

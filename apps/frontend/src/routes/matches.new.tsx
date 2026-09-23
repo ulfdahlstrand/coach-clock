@@ -6,6 +6,8 @@ import { useForm } from 'react-hook-form';
 import {
   DEFAULT_IDEAL_SHIFT_SECONDS,
   FORMATIONS,
+  POSITION_MODES,
+  type PositionMode,
   type Formation,
   type MatchFormat,
 } from '@coach-clock/contracts';
@@ -16,6 +18,7 @@ import {
   createMatchResolver,
   applyTeamDefaults,
   loadMatchSetupDefaults,
+  POSITION_MODE_LABELS,
   type MatchSetupDefaults,
   saveMatchSetupDefaults,
 } from '@/lib/match-forms';
@@ -28,6 +31,7 @@ const initial: CreateMatchFormValues = {
   periodCount: 3,
   periodLengthSeconds: 900,
   idealShiftSeconds: DEFAULT_IDEAL_SHIFT_SECONDS,
+  positionMode: 'time',
   presentPlayerIds: [],
   assignments: [],
 };
@@ -90,6 +94,7 @@ function MatchSetupPage() {
         ...(values.idealShiftSeconds === undefined
           ? {}
           : { idealShiftSeconds: values.idealShiftSeconds }),
+        ...(values.positionMode === undefined ? {} : { positionMode: values.positionMode }),
       },
       loadMatchSetupDefaults(nextTeamId),
       touched.current,
@@ -270,6 +275,27 @@ function MatchSetupPage() {
             </select>
             <span className="text-muted-foreground block text-xs">
               Hur länge en spelare är inne innan appen föreslår byte. Du kan alltid byta tidigare.
+            </span>
+          </label>
+          <label className="block space-y-2">
+            <span className="text-sm font-medium">Positioner i bytesförslagen</span>
+            <select
+              aria-label="Positioner i bytesförslagen"
+              className="border-input bg-background min-h-touch w-full rounded-lg border px-3"
+              value={form.watch('positionMode') ?? 'time'}
+              onChange={(event) => {
+                touch('positionMode');
+                form.setValue('positionMode', event.target.value as PositionMode);
+              }}
+            >
+              {POSITION_MODES.map((mode) => (
+                <option key={mode} value={mode}>
+                  {POSITION_MODE_LABELS[mode]}
+                </option>
+              ))}
+            </select>
+            <span className="text-muted-foreground block text-xs">
+              Styr bara var bytet görs. När och vem som går in avgörs av bytestid och speltid.
             </span>
           </label>
         </div>

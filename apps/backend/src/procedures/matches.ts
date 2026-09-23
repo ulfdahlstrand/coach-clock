@@ -125,6 +125,7 @@ export const createMatch = os.matches.create.handler(async ({ input, context }) 
           periodLengthSeconds: input.periodLengthSeconds,
           opponent: input.opponent,
           idealShiftSeconds: input.idealShiftSeconds ?? DEFAULT_IDEAL_SHIFT_SECONDS,
+          positionMode: input.positionMode ?? 'time',
         },
       },
       {
