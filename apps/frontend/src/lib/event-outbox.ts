@@ -29,10 +29,34 @@ export interface DrainOptions {
   readonly maxRetryDelayMs?: number;
 }
 
+/** En händelse servern avvisat slutgiltigt, med felet som avgjorde det. */
+export interface RejectedEvent {
+  readonly event: MatchEvent;
+  readonly error: unknown;
+}
+
 export interface DrainResult {
   readonly sent: readonly AppendMatchEventOutput[];
+  /** Händelser servern sagt definitivt nej till. De ligger inte kvar i kön. */
+  readonly rejected: readonly RejectedEvent[];
   readonly failedEventId?: string;
   readonly nextAttemptAt?: number;
+}
+
+/**
+ * Är felet serverns slutgiltiga nej?
+ *
+ * Kön finns för dålig täckning vid sidlinjen: ett avbrutet anrop ska skickas om
+ * tills det går fram. Men en händelse som saknar behörighet eller är felaktig
+ * blir aldrig giltig av att skickas igen. Den måste ut ur kön och fram till
+ * tränaren, annars ser ett nekat byte ut som ett genomfört.
+ *
+ * 408 och 429 är undantagen bland 4xx — de ber oss vänta, inte sluta.
+ */
+export function isPermanentRejection(error: unknown): boolean {
+  const status: unknown = (error as { status?: unknown } | null | undefined)?.status;
+  if (typeof status !== 'number' || status === 408 || status === 429) return false;
+  return status >= 400 && status < 500;
 }
 
 const defaultBaseRetryDelayMs = 1_000;
@@ -101,6 +125,7 @@ export async function drainOutbox(
   }
 
   const sent: AppendMatchEventOutput[] = [];
+  const rejected: RejectedEvent[] = [];
   const entries = [...(await repository.list())].sort(
     (left, right) =>
       left.queuedAt - right.queuedAt || left.event.eventId.localeCompare(right.event.eventId),
@@ -108,7 +133,7 @@ export async function drainOutbox(
 
   for (const entry of entries) {
     if (entry.nextAttemptAt > now()) {
-      return { sent, nextAttemptAt: entry.nextAttemptAt };
+      return { sent, rejected, nextAttemptAt: entry.nextAttemptAt };
     }
 
     try {
@@ -121,16 +146,24 @@ export async function drainOutbox(
       }
       await repository.delete(entry.event.eventId);
       sent.push(acknowledged);
-    } catch {
+    } catch (error) {
+      if (isPermanentRejection(error)) {
+        // Den här händelsen går aldrig fram. Ta bort den och fortsätt med kön —
+        // den ska inte hindra händelser som mycket väl kan skickas.
+        await repository.delete(entry.event.eventId);
+        rejected.push({ event: entry.event, error });
+        continue;
+      }
+
       const attempts = entry.attempts + 1;
       const delay = Math.min(maxRetryDelayMs, baseRetryDelayMs * 2 ** (attempts - 1));
       const nextAttemptAt = now() + delay;
       await repository.put({ ...entry, attempts, nextAttemptAt });
-      return { sent, failedEventId: entry.event.eventId, nextAttemptAt };
+      return { sent, rejected, failedEventId: entry.event.eventId, nextAttemptAt };
     }
   }
 
-  return { sent };
+  return { sent, rejected };
 }
 
 /** Starts a small browser-only worker and retries immediately when connectivity returns. */

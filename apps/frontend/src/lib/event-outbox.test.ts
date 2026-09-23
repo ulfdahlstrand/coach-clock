@@ -99,6 +99,7 @@ describe('event outbox', () => {
 
     await expect(drainOutbox(repository, send, { now: () => 99 })).resolves.toEqual({
       sent: [],
+      rejected: [],
       nextAttemptAt: 100,
     });
     expect(send).not.toHaveBeenCalled();
@@ -124,5 +125,75 @@ describe('event outbox', () => {
     expect(created.eventId).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
     );
+  });
+});
+
+describe('nekade händelser', () => {
+  /** Efterliknar oRPC:s ORPCError, som bär statuskoden som ett tal. */
+  function httpError(status: number) {
+    return Object.assign(new Error(`HTTP ${String(status)}`), { status });
+  }
+
+  test('en obehörig händelse kastas ur kön i stället för att köas för evigt', async () => {
+    const repository = memoryRepository();
+    const outbox = createEventOutbox(repository);
+    const item = event();
+    await outbox.enqueue(item);
+
+    const result = await outbox.drain(() => Promise.reject(httpError(401)));
+
+    expect(result.rejected.map((entry) => entry.event.eventId)).toEqual([item.eventId]);
+    expect(result.failedEventId).toBeUndefined();
+    expect(repository.entries.size).toBe(0);
+  });
+
+  test('ett serverfel köas som förut', async () => {
+    const repository = memoryRepository();
+    const outbox = createEventOutbox(repository);
+    const item = event();
+    await outbox.enqueue(item);
+
+    const result = await outbox.drain(() => Promise.reject(httpError(500)));
+
+    expect(result.rejected).toEqual([]);
+    expect(result.failedEventId).toBe(item.eventId);
+    expect(repository.entries.size).toBe(1);
+  });
+
+  test('en nekad händelse blockerar inte de som står efter i kön', async () => {
+    const repository = memoryRepository();
+    const outbox = createEventOutbox(repository);
+    const denied = event();
+    const accepted = event();
+    await outbox.enqueue(denied);
+    await outbox.enqueue(accepted);
+
+    const result = await outbox.drain((pending) =>
+      pending.eventId === denied.eventId
+        ? Promise.reject(httpError(403))
+        : Promise.resolve({
+            eventId: pending.eventId,
+            matchId: pending.matchId,
+            seq: 1,
+            receivedAt: '2026-09-21T10:00:01.000Z',
+          }),
+    );
+
+    expect(result.rejected.map((entry) => entry.event.eventId)).toEqual([denied.eventId]);
+    expect(result.sent.map((entry) => entry.eventId)).toEqual([accepted.eventId]);
+    expect(repository.entries.size).toBe(0);
+  });
+
+  test('429 och 408 är uppmaningar att vänta, inte slutgiltiga nej', async () => {
+    for (const status of [408, 429]) {
+      const repository = memoryRepository();
+      const outbox = createEventOutbox(repository);
+      await outbox.enqueue(event());
+
+      const result = await outbox.drain(() => Promise.reject(httpError(status)));
+
+      expect(result.rejected).toEqual([]);
+      expect(repository.entries.size).toBe(1);
+    }
   });
 });
