@@ -1,7 +1,17 @@
 import { z } from 'zod';
 
 const idSchema = z.uuid();
-const nameSchema = z.string().trim().min(1).max(100);
+/*
+ * Meddelandena är svenska för att formulären visar dem rakt av. Utan dem faller
+ * Zod tillbaka på sin engelska standardtext ("Too small: expected string to
+ * have >=1 characters"), som både är fel språk och pratar om tecken i stället
+ * för om vad användaren ska göra.
+ */
+const nameSchema = z
+  .string()
+  .trim()
+  .min(1, 'Ange ett namn')
+  .max(100, 'Namnet får vara högst 100 tecken');
 
 export const teamSchema = z.object({
   id: idSchema,
