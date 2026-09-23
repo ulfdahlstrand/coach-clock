@@ -176,10 +176,28 @@ export function deriveFairnessState(
         ? formation.slots.length
         : outfieldSlotCount(formation);
   const playerEntries = Object.entries(state.players);
-  const rotationIds = new Set(
-    playerEntries
-      .filter(([, player]) => rotateGoalkeepers || !player.isGoalkeeper)
-      .map(([playerId]) => playerId),
+  /*
+   * Rotationen avgörs av vad spelaren gör, inte av en flagga. En målvakt som
+   * byts ut ska konkurrera om utespelartid som alla andra; en flaggbaserad
+   * pool gjorde henne permanent osynlig och gav henne minst speltid av alla
+   * så fort laget roterade målvakt (#81).
+   */
+  const rotationIds = new Set(playerEntries.map(([playerId]) => playerId));
+  const goalkeeperSlotIds = new Set<string>(
+    (formation?.slots ?? []).filter((slot) => slot.role === 'goalkeeper').map((slot) => slot.id),
+  );
+  /** Stod spelaren i mål vid den här tidpunkten? */
+  const keptGoalAt = (playerId: string, atMs: number): boolean =>
+    !rotateGoalkeepers &&
+    state.goalkeeperStints.some(
+      (stint) => stint.playerId === playerId && stint.fromMs <= atMs && atMs < stint.toMs,
+    );
+  const currentGoalkeepers = new Set(
+    rotateGoalkeepers
+      ? []
+      : Object.entries(state.currentSlots)
+          .filter(([slotId]) => goalkeeperSlotIds.has(slotId))
+          .map(([, playerId]) => playerId),
   );
   const shares = new Map<string, number>([...rotationIds].map((playerId) => [playerId, 0]));
   const changes = availabilityChanges(effectiveEvents(events, now.getTime()), rotationIds);
@@ -190,6 +208,13 @@ export function deriveFairnessState(
     const boundaries = [startMs, endMs];
     for (const change of changes) {
       if (change.atMs > startMs && change.atMs < endMs) boundaries.push(change.atMs);
+    }
+    // Ett målvaktsbyte mitt i ett avsnitt måste dela det, annars skulle halva
+    // stunden i buren räknas som utespelartid eller tvärtom.
+    for (const stint of state.goalkeeperStints) {
+      for (const edge of [stint.fromMs, stint.toMs]) {
+        if (edge > startMs && edge < endMs) boundaries.push(edge);
+      }
     }
     boundaries.sort((left, right) => left - right);
 
@@ -203,7 +228,9 @@ export function deriveFairnessState(
         for (const change of changes) {
           if (change.playerId === playerId && change.atMs <= fromMs) isAvailable = change.available;
         }
-        if (isAvailable) available.add(playerId);
+        // Den som står i mål tjänar ingen utespelarandel — skulden fryses och
+        // hon återvänder till rotationen på samma villkor som hon lämnade den.
+        if (isAvailable && !keptGoalAt(playerId, fromMs)) available.add(playerId);
       }
       if (available.size === 0 || rotatingSlotCount === 0) continue;
       const earned = ((toMs - fromMs) * rotatingSlotCount) / available.size;
@@ -229,8 +256,8 @@ export function deriveFairnessState(
       };
     })
     .sort(stablePlayerOrder);
-  const rotationPlayers = players.filter((player) => rotationIds.has(player.playerId));
-  const goalkeeperPlayers = players.filter((player) => !rotationIds.has(player.playerId));
+  const rotationPlayers = players.filter((player) => !currentGoalkeepers.has(player.playerId));
+  const goalkeeperPlayers = players.filter((player) => currentGoalkeepers.has(player.playerId));
   const bench = new Set(state.bench);
   const availableBench = rotationPlayers.filter(
     (player) => bench.has(player.playerId) && player.available,

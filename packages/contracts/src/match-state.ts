@@ -47,6 +47,13 @@ export type MatchStateIgnoredEvent = {
   readonly raw: unknown;
 };
 
+/** En sammanhängande stund då en spelare stod i ett målvaktsfack. */
+export type GoalkeeperStint = {
+  readonly playerId: string;
+  readonly fromMs: number;
+  readonly toMs: number;
+};
+
 export type DerivedMatchState = {
   readonly matchId: string | null;
   readonly formationId: string | null;
@@ -57,6 +64,12 @@ export type DerivedMatchState = {
   readonly currentSlots: Readonly<Record<string, string>>;
   readonly bench: readonly string[];
   readonly plannedSubstitutions: readonly PlannedSubstitution[];
+  /**
+   * När varje spelare stod i mål, i väggklockans tid. Rättvisemodellen behöver
+   * det för att kunna frysa en målvakts skuld medan hon står i buren — vem som
+   * har bollen i händerna avgörs av facket hon står i, inte av en flagga.
+   */
+  readonly goalkeeperStints: readonly GoalkeeperStint[];
   readonly ignored: readonly MatchStateIgnoredEvent[];
 };
 
@@ -99,6 +112,7 @@ function emptyState(ignored: readonly MatchStateIgnoredEvent[] = []): DerivedMat
     currentSlots: {},
     bench: [],
     plannedSubstitutions: [],
+    goalkeeperStints: [],
     ignored,
   };
 }
@@ -404,7 +418,18 @@ function deriveMatchStateInternal(input: unknown, now: Date): DerivedMatchState 
   let cursorMs = effective[0]?.atMs ?? nowMs;
 
   const name = (playerId: string) => players.get(playerId)?.name ?? playerId;
+  const goalkeeperStints: GoalkeeperStint[] = [];
   const addTime = (fromMs: number, toMs: number) => {
+    // Facket noteras även när klockan står still: en paus avbryter inte att
+    // spelaren är lagets målvakt, och rättvisemodellen skär själv mot klockan.
+    if (toMs > fromMs) {
+      for (const [slotId, playerId] of slots) {
+        if (playerRole(slotId) === 'goalkeeper') {
+          goalkeeperStints.push({ playerId, fromMs, toMs });
+        }
+      }
+    }
+
     const duration = elapsedBetween(clock.segments, fromMs, toMs);
     if (slots.size === 0 || duration === 0) return;
 
@@ -639,6 +664,7 @@ function deriveMatchStateInternal(input: unknown, now: Date): DerivedMatchState 
     currentSlots: Object.fromEntries(slots),
     bench: [...bench],
     plannedSubstitutions: [...plans.values()],
+    goalkeeperStints,
     ignored: ignored.sort((left, right) => left.index - right.index),
   };
 }

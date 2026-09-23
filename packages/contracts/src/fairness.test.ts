@@ -184,3 +184,78 @@ describe('deriveFairnessState', () => {
     );
   });
 });
+
+describe('målvakt som roteras ut', () => {
+  /**
+   * Tid i mål är svår att parera för, så en målvakt får gärna mer total speltid.
+   * Men hon ska inte straffas i de andra perioderna: skulden fryses medan hon
+   * står i buren, och när hon byts ut konkurrerar hon om utespelartid på samma
+   * villkor som alla andra.
+   */
+  function withKeeperSwap() {
+    return [
+      ...foundation(),
+      // Efter två minuter går målvakten av och E tar över buren.
+      event('2026-09-20T13:02:00.000Z', {
+        type: 'substitution_confirmed',
+        swaps: [{ slotId: 'gk', outPlayerId: ids.gk, inPlayerId: ids.e }],
+      }),
+    ];
+  }
+
+  it('räknar med den utbytta målvakten i rotationen', () => {
+    const fairness = deriveFairnessState(withKeeperSwap(), at(240), { debtThresholdMs: 60_000 });
+
+    const keeper = fairness.rotationPlayers.find((player) => player.playerId === ids.gk);
+    expect(keeper).toBeDefined();
+    expect(fairness.goalkeeperPlayers.map((player) => player.playerId)).toEqual([ids.e]);
+  });
+
+  it('fryser målvaktens skuld medan hon står i mål', () => {
+    // Inget hände mellan 13:00 och 13:02 utom att hon vaktade buren.
+    const duringFirstStint = deriveFairnessState(withKeeperSwap(), at(60));
+    const keeperWhileKeeping = duringFirstStint.players.find(
+      (player) => player.playerId === ids.gk,
+    );
+
+    expect(keeperWhileKeeping?.shareMs).toBe(0);
+    expect(keeperWhileKeeping?.playedMs).toBe(0);
+    expect(keeperWhileKeeping?.debtMs).toBe(0);
+  });
+
+  it('ställer henne i kön utan att tiden i mål räknas för eller emot henne', () => {
+    const fairness = deriveFairnessState(withKeeperSwap(), at(240), { debtThresholdMs: 30_000 });
+    const debt = (playerId: string) =>
+      fairness.players.find((player) => player.playerId === playerId)?.debtMs;
+
+    // Andelen tjänas bara de två minuter hon inte stod i mål: 4/6 × 120 s.
+    expect(debt(ids.gk)).toBe(80_000);
+    // F har suttit på bänken hela matchen och går därför först.
+    expect(debt(ids.f)).toBe(160_000);
+    expect(fairness.suggestedSubstitution?.inPlayerId).toBe(ids.f);
+  });
+
+  it('föreslår henne som utespelare när hon väntat längst', () => {
+    const log = [
+      ...withKeeperSwap(),
+      event('2026-09-20T13:00:00.000Z', {
+        type: 'availability_changed',
+        playerId: ids.f,
+        available: false,
+        from: '2026-09-20T13:00:00.000Z',
+      }),
+    ];
+    const fairness = deriveFairnessState(log, at(240), { debtThresholdMs: 30_000 });
+
+    expect(fairness.substitutionDue).toBe(true);
+    expect(fairness.suggestedSubstitution?.inPlayerId).toBe(ids.gk);
+  });
+
+  it('lämnar ett lag med fast målvakt oförändrat', () => {
+    const fairness = deriveFairnessState(foundation(), at(120), { debtThresholdMs: 60_000 });
+
+    expect(fairness.rotatingSlotCount).toBe(4);
+    expect(fairness.goalkeeperPlayers.map((player) => player.playerId)).toEqual([ids.gk]);
+    expect(fairness.rotationPlayers.some((player) => player.playerId === ids.gk)).toBe(false);
+  });
+});
