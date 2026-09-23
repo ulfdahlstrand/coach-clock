@@ -1,5 +1,9 @@
 import { expect, test } from 'vitest';
-import { createMatchFormSchema } from './match-forms';
+import {
+  createMatchFormSchema,
+  loadMatchSetupDefaults,
+  saveMatchSetupDefaults,
+} from './match-forms';
 
 test('matchstartformuläret använder kontraktets regler för startelvan', () => {
   const input = {
@@ -14,4 +18,17 @@ test('matchstartformuläret använder kontraktets regler för startelvan', () =>
   };
   expect(createMatchFormSchema.safeParse(input).success).toBe(true);
   expect(createMatchFormSchema.safeParse({ ...input, opponent: ' ' }).success).toBe(false);
+});
+
+test('lagets förval minns bytestiden till nästa match', () => {
+  const teamId = '00000000-0000-4000-8000-000000000009';
+  saveMatchSetupDefaults(teamId, {
+    format: 7,
+    formationId: '7v7-2-3-1',
+    periodCount: 3,
+    periodLengthSeconds: 900,
+    idealShiftSeconds: 300,
+  });
+
+  expect(loadMatchSetupDefaults(teamId)?.idealShiftSeconds).toBe(300);
 });

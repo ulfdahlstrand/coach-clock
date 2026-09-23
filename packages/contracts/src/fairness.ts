@@ -2,12 +2,13 @@ import { type MatchEvent, parseMatchEventLog } from './events.js';
 import { formations, outfieldSlotCount } from './formations.js';
 import { deriveMatchState, type DerivedMatchState } from './match-state.js';
 
-/** The default amount of missed fair share that prompts a substitution. */
+/**
+ * Skuld som får ett spelarkort att lysa som eftersatt. Sedan #82 är den bara
+ * en färgskala — när ett byte är befogat avgörs av matchens bytestid.
+ */
 export const DEFAULT_SUBSTITUTION_DEBT_THRESHOLD_MS = 90_000;
 
 export type FairnessOptions = {
-  /** Debt that makes a substitution due. Defaults to 90 seconds. */
-  readonly debtThresholdMs?: number;
   /** Include players marked as goalkeepers in the rotation pool. Defaults to false. */
   readonly rotateGoalkeepers?: boolean;
 };
@@ -23,6 +24,8 @@ export type FairnessPlayer = {
   readonly playedMs: number;
   /** `shareMs - playedMs`; a positive value means the player is underplayed. */
   readonly debtMs: number;
+  /** Matchtid i det pågående passet på planen, 0 på bänken. */
+  readonly currentShiftMs: number;
 };
 
 export type SuggestedSubstitution = {
@@ -31,14 +34,15 @@ export type SuggestedSubstitution = {
 };
 
 export type FairnessState = {
-  readonly debtThresholdMs: number;
+  /** Minsta passlängd innan en utespelare föreslås ut. */
+  readonly idealShiftMs: number;
   readonly rotatingSlotCount: number;
   readonly players: readonly FairnessPlayer[];
   readonly rotationPlayers: readonly FairnessPlayer[];
   /** Goalkeepers are reported separately when they are not being rotated. */
   readonly goalkeeperPlayers: readonly FairnessPlayer[];
   readonly substitutionDue: boolean;
-  /** Match-clock milliseconds until the most underplayed available substitute reaches the threshold. */
+  /** Matchtid tills nästa byte blir befogat, eller null om inget byte är möjligt. */
   readonly timeToNextSubstitutionMs: number | null;
   readonly suggestedSubstitution: SuggestedSubstitution | null;
 };
@@ -51,12 +55,6 @@ type AvailabilityChange = {
 
 function stablePlayerOrder(left: FairnessPlayer, right: FairnessPlayer): number {
   return left.playerId.localeCompare(right.playerId);
-}
-
-function normalizeThreshold(value: number | undefined): number {
-  return value !== undefined && Number.isFinite(value) && value >= 0
-    ? value
-    : DEFAULT_SUBSTITUTION_DEBT_THRESHOLD_MS;
 }
 
 /**
@@ -167,7 +165,7 @@ export function deriveFairnessState(
 ): FairnessState {
   const state = deriveMatchState(events, now);
   const rotateGoalkeepers = options.rotateGoalkeepers ?? false;
-  const debtThresholdMs = normalizeThreshold(options.debtThresholdMs);
+  const idealShiftMs = state.idealShiftMs;
   const formation = formations.find((item) => item.id === state.formationId);
   const rotatingSlotCount =
     formation === undefined
@@ -253,6 +251,7 @@ export function deriveFairnessState(
         shareMs,
         playedMs,
         debtMs: shareMs - playedMs,
+        currentShiftMs: player.currentShiftMs,
       };
     })
     .sort(stablePlayerOrder);
@@ -268,20 +267,36 @@ export function deriveFairnessState(
   const incoming = [...availableBench].sort(
     (left, right) => right.debtMs - left.debtMs || stablePlayerOrder(left, right),
   )[0];
-  const outgoing = [...rotatingOnField].sort(
-    (left, right) => left.debtMs - right.debtMs || stablePlayerOrder(left, right),
-  )[0];
-  const maxBenchDebt = incoming?.debtMs;
-  const substitutionDue = maxBenchDebt !== undefined && maxBenchDebt >= debtThresholdMs;
-  const availableCount = rotationPlayers.filter((player) => player.available).length;
-  const rate = availableCount === 0 ? 0 : rotatingSlotCount / availableCount;
+  /*
+   * Bytestiden (#82) gäller bara motorns förslag. En spelare föreslås inte ut
+   * förrän hon spelat klart sitt pass — men tränaren kan alltid byta för hand,
+   * till exempel vid en skada. Reducern spärrar inga byten på passlängd.
+   */
+  const shiftDone = rotatingOnField.filter((player) => player.currentShiftMs >= idealShiftMs);
+  const lowestDebt = (left: FairnessPlayer, right: FairnessPlayer) =>
+    left.debtMs - right.debtMs || stablePlayerOrder(left, right);
+  const outgoing =
+    [...shiftDone].sort(lowestDebt)[0] ??
+    // Ingen har spelat klart än: förhandsvisa den som blir först klar.
+    [...rotatingOnField].sort(
+      (left, right) => right.currentShiftMs - left.currentShiftMs || lowestDebt(left, right),
+    )[0];
+  const outgoingDone = outgoing !== undefined && outgoing.currentShiftMs >= idealShiftMs;
+  const substitutionDue =
+    incoming !== undefined && outgoingDone && incoming.debtMs > outgoing.debtMs;
   const timeToNextSubstitutionMs =
-    maxBenchDebt === undefined || rate === 0
+    incoming === undefined || outgoing === undefined
       ? null
-      : Math.max(0, (debtThresholdMs - maxBenchDebt) / rate);
+      : substitutionDue
+        ? 0
+        : outgoingDone
+          ? // Passet är slut men bänken ligger inte efter. Skulderna möts med
+            // summan av bänkens och planens hastighet, som alltid är 1.
+            Math.max(0, outgoing.debtMs - incoming.debtMs)
+          : idealShiftMs - outgoing.currentShiftMs;
 
   return {
-    debtThresholdMs,
+    idealShiftMs,
     rotatingSlotCount,
     players,
     rotationPlayers,
