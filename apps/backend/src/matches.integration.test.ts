@@ -227,7 +227,7 @@ beforeAll(async () => {
 });
 
 describe('POST /matches', () => {
-  it('skapar ägarsession och en komplett, startad matchlogg från uppställningen', async () => {
+  it('skapar ägarsession och en komplett matchlogg som väntar på avspark', async () => {
     const team = await db
       .insertInto('teams')
       .values({ name: 'F11 Blå' })
@@ -264,12 +264,8 @@ describe('POST /matches', () => {
       .where('match_id', '=', body.id)
       .orderBy('seq')
       .execute();
-    expect(events.map((event) => event.type)).toEqual([
-      'match_created',
-      'squad_set',
-      'lineup_set',
-      'period_started',
-    ]);
+    // Klockan startar först när domaren eller tränaren blåser igång (#89).
+    expect(events.map((event) => event.type)).toEqual(['match_created', 'squad_set', 'lineup_set']);
   });
 });
 
@@ -467,6 +463,41 @@ describe('POST /matches/events', () => {
       { event_id: correction.eventId, type: 'event_time_corrected' },
       { event_id: undone.eventId, type: 'event_undone' },
     ]);
+  });
+
+  it('stänger matchen vid match_ended och öppnar den igen när avslutet ångras', async () => {
+    const matchId = await createMatch();
+    const owner = await createParticipant(matchId, 'owner');
+    const status = () =>
+      db
+        .selectFrom('matches')
+        .select(['status', 'ended_at'])
+        .where('id', '=', matchId)
+        .executeTakeFirstOrThrow();
+
+    const ended = {
+      eventId: uuid(),
+      matchId,
+      v: 1,
+      at: '2026-09-20T11:59:00.000Z',
+      by: 'owner',
+      type: 'match_ended',
+    } as const;
+    expect((await post(baseUrl, ended, owner.token)).status).toBe(200);
+    // Delningskoden och domarlänken räknar sin respit från ended_at.
+    expect(await status()).toEqual({ status: 'ended', ended_at: serverNow });
+
+    const undone = {
+      eventId: uuid(),
+      matchId,
+      v: 1,
+      at: '2026-09-20T12:00:00.000Z',
+      by: 'owner',
+      type: 'event_undone',
+      targetEventId: ended.eventId,
+    } as const;
+    expect((await post(baseUrl, undone, owner.token)).status).toBe(200);
+    expect(await status()).toEqual({ status: 'live', ended_at: null });
   });
 
   it('avvisar en rättelse som inte pekar på en befintlig originalhändelse', async () => {
