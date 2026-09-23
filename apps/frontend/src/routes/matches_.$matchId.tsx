@@ -9,10 +9,11 @@ import {
   type SequencedMatchEvent,
   type SubstitutionSwap,
 } from '@coach-clock/contracts';
-import { FlagIcon, PauseIcon, PlayIcon, SquareIcon } from 'lucide-react';
+import { FlagIcon, PauseIcon, PlayIcon, SquareIcon, Undo2Icon } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { BenchGrid, formationAssignments, MatchPitch } from '@/components/match-pitch';
+import { eventLabel, latestUndoableEvent } from '@/components/match-event-history';
 import { apiClient } from '@/lib/api-client';
 import { eventOutbox, startOutboxDrainer, withClientEventId } from '@/lib/event-outbox';
 import { createMatchEventStream } from '@/lib/match-event-stream';
@@ -41,53 +42,6 @@ type ClientMatchEvent = MatchEvent extends infer Event
     ? Omit<Event, 'eventId' | 'at' | 'matchId' | 'v' | 'by'>
     : never
   : never;
-
-function eventLabel(event: MatchEvent): string {
-  switch (event.type) {
-    case 'match_created':
-      return 'Match skapad';
-    case 'squad_set':
-      return 'Truppen uppdaterad';
-    case 'lineup_set':
-      return 'Startuppställning sparad';
-    case 'period_started':
-      return `Period ${event.periodNumber} startad`;
-    case 'period_ended':
-      return `Period ${event.periodNumber} avslutad`;
-    case 'clock_paused':
-      return 'Klockan pausad';
-    case 'clock_resumed':
-      return 'Klockan fortsätter';
-    case 'substitution_planned':
-      return 'Byte planerat';
-    case 'substitution_cancelled':
-      return 'Planerat byte avbrutet';
-    case 'substitution_confirmed':
-      return 'Byte genomfört';
-    case 'player_moved':
-      return 'Spelare flyttad';
-    case 'formation_changed':
-      return 'Formation ändrad';
-    case 'availability_changed':
-      return event.available ? 'Spelare tillgänglig' : 'Spelare otillgänglig';
-    case 'match_ended':
-      return 'Match avslutad';
-    case 'event_undone':
-      return 'En händelse ångrad';
-    case 'event_time_corrected':
-      return 'Tidpunkt korrigerad';
-  }
-}
-
-function isOriginalEvent(event: MatchEvent): boolean {
-  return event.type !== 'event_undone' && event.type !== 'event_time_corrected';
-}
-
-function localDateTimeValue(iso: string): string {
-  const date = new Date(iso);
-  const offset = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
-}
 
 function useScreenWakeLock(shouldKeepAwake: boolean): void {
   useEffect(() => {
@@ -140,8 +94,6 @@ function LiveMatchPage() {
   const [selectedSlotId, setSelectedSlotId] = useState<string | undefined>();
   const [pendingSwaps, setPendingSwaps] = useState<readonly SubstitutionSwap[]>([]);
   const [undoEvent, setUndoEvent] = useState<MatchEvent | undefined>();
-  const [editingEventId, setEditingEventId] = useState<string | undefined>();
-  const [correctedAt, setCorrectedAt] = useState('');
   const [fairnessAlertOpen, setFairnessAlertOpen] = useState(false);
   const [suggestedOutPlayerId, setSuggestedOutPlayerId] = useState<string | undefined>();
   const [suggestedInPlayerId, setSuggestedInPlayerId] = useState<string | undefined>();
@@ -255,6 +207,7 @@ function LiveMatchPage() {
   const currentPeriodEnded =
     activePeriod > 0 &&
     eventLog.some((event) => event.type === 'period_ended' && event.periodNumber === activePeriod);
+  const latestUndoable = latestUndoableEvent(eventLog);
   const { status, startLabel, matchOver } = matchControlState({
     periodNumber: clock?.periodNumber,
     running: clock?.running === true,
@@ -391,24 +344,6 @@ function LiveMatchPage() {
     setUndoEvent(undefined);
   }
 
-  function openCorrection(event: MatchEvent): void {
-    setEditingEventId(event.eventId);
-    setCorrectedAt(localDateTimeValue(event.at));
-  }
-
-  function correctEventTime(event: MatchEvent): void {
-    if (correctedAt === '') return;
-    const timestamp = new Date(correctedAt);
-    if (Number.isNaN(timestamp.getTime())) return;
-    appendEvent({
-      type: 'event_time_corrected',
-      targetEventId: event.eventId,
-      correctedAt: timestamp.toISOString(),
-    });
-    setEditingEventId(undefined);
-    setCorrectedAt('');
-  }
-
   function changeFormation(formationId: string): void {
     const next = FORMATIONS.find((item) => item.id === formationId);
     if (next === undefined || next.id === matchState.formationId) return;
@@ -512,6 +447,22 @@ function LiveMatchPage() {
               <SquareIcon aria-hidden="true" /> Avsluta period
             </Button>
           </div>
+        )}
+
+        {/* Ett feltryck ska kunna tas tillbaka utan att lämna matchen (#90). */}
+        {latestUndoable === undefined ? null : (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground min-h-touch self-center"
+            disabled={append.isPending || serverTime.data === undefined}
+            onClick={() =>
+              appendEvent({ type: 'event_undone', targetEventId: latestUndoable.eventId })
+            }
+          >
+            <Undo2Icon aria-hidden="true" /> Ångra senaste:{' '}
+            {eventLabel(latestUndoable).toLowerCase()}
+          </Button>
         )}
 
         {formation === undefined ? null : (
@@ -736,104 +687,6 @@ function LiveMatchPage() {
             ) : null}
           </div>
         )}
-
-        <section aria-labelledby="event-history-heading" className="space-y-3">
-          <div>
-            <h2 id="event-history-heading" className="text-lg font-semibold">
-              Händelser
-            </h2>
-            <p className="text-muted-foreground text-sm">
-              Rätta i efterhand utan att radera matchloggen.
-            </p>
-          </div>
-          <ul className="space-y-2" aria-label="Matchens händelser">
-            {[...eventLog].reverse().map((event) => {
-              const canCorrect = isOriginalEvent(event);
-              const isEditing = editingEventId === event.eventId;
-              return (
-                <li key={event.eventId} className="rounded-2xl border border-white/10 bg-card p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-medium">{eventLabel(event)}</p>
-                      <p className="text-muted-foreground mt-1 text-xs tabular-nums">
-                        {new Date(event.at).toLocaleString('sv-SE', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          day: '2-digit',
-                          month: '2-digit',
-                        })}
-                      </p>
-                    </div>
-                    {canCorrect ? (
-                      <div className="flex shrink-0 gap-1">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="min-h-touch"
-                          disabled={append.isPending || serverTime.data === undefined}
-                          onClick={() =>
-                            appendEvent({ type: 'event_undone', targetEventId: event.eventId })
-                          }
-                        >
-                          Ångra
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="min-h-touch"
-                          disabled={append.isPending || serverTime.data === undefined}
-                          onClick={() => openCorrection(event)}
-                        >
-                          Rätta tid
-                        </Button>
-                      </div>
-                    ) : null}
-                  </div>
-                  {isEditing ? (
-                    <form
-                      className="mt-3 flex flex-col gap-2 border-t border-white/10 pt-3"
-                      onSubmit={(submitEvent) => {
-                        submitEvent.preventDefault();
-                        correctEventTime(event);
-                      }}
-                    >
-                      <label
-                        className="text-muted-foreground text-sm"
-                        htmlFor={`corrected-at-${event.eventId}`}
-                      >
-                        Rätt tidpunkt
-                      </label>
-                      <input
-                        id={`corrected-at-${event.eventId}`}
-                        className="min-h-touch rounded-xl border border-white/15 bg-secondary px-3 text-foreground"
-                        type="datetime-local"
-                        value={correctedAt}
-                        onChange={(inputEvent) => setCorrectedAt(inputEvent.target.value)}
-                      />
-                      <div className="grid grid-cols-2 gap-2">
-                        <Button
-                          size="sm"
-                          type="submit"
-                          disabled={append.isPending || correctedAt === ''}
-                        >
-                          Spara tid
-                        </Button>
-                        <Button
-                          size="sm"
-                          type="button"
-                          variant="secondary"
-                          onClick={() => setEditingEventId(undefined)}
-                        >
-                          Avbryt
-                        </Button>
-                      </div>
-                    </form>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        </section>
 
         {match.isPending || events.isPending || serverTime.isPending ? (
           <p role="status" className="text-muted-foreground text-center text-sm">

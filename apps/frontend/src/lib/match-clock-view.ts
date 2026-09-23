@@ -1,4 +1,4 @@
-import { matchClock, type MatchClock, type MatchEvent } from '@coach-clock/contracts';
+import { deriveMatchState, type MatchClock, type MatchEvent } from '@coach-clock/contracts';
 
 /** Formats a duration for the large sideline clock without ever owning time itself. */
 export function formatClock(milliseconds: number): string {
@@ -17,7 +17,14 @@ export function deriveVisibleMatchClock(
   events: readonly MatchEvent[],
   serverAdjustedNow: Date | undefined,
 ): MatchClock | undefined {
-  return serverAdjustedNow === undefined ? undefined : matchClock(events, serverAdjustedNow);
+  /*
+   * Klockan räknas på samma loggvy som resten av matchen: efter ångrade
+   * händelser, rättade tider och ogiltiga övergångar. Den råa loggen gav en
+   * klocka som inte märkte att en paus ångrats eller en starttid rättats.
+   */
+  return serverAdjustedNow === undefined
+    ? undefined
+    : deriveMatchState(events, serverAdjustedNow).clock;
 }
 
 export type MatchControlState = {
