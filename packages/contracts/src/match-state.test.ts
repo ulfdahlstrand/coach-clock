@@ -298,3 +298,75 @@ describe('deriveMatchState', () => {
     });
   });
 });
+
+describe('händelser med samma tidsstämpel', () => {
+  /*
+   * Backenden skriver alla fyra skapelsehändelser i en och samma transaktion,
+   * med ett gemensamt `now`. Ordningen dem emellan bärs därför inte av tiden
+   * utan av loggens ordning. Uuid:na här är valda så att en likabrytning på
+   * eventId skulle lägga lineup_set före squad_set — då känner reducern inte
+   * igen någon spelare och förkastar hela uppställningen.
+   */
+  const AT = '2026-09-20T12:50:00.000Z';
+  const created = {
+    eventId: '00000000-0000-4000-8000-0000000000aa',
+    matchId: MATCH_ID,
+    v: MATCH_EVENT_VERSION,
+    at: AT,
+    by: 'owner',
+    type: 'match_created',
+    format: 7,
+    formationId: '7v7-2-3-1',
+    periods: 2,
+    periodLengthSeconds: 1_500,
+    opponent: 'Grön IF',
+  };
+  const squad = {
+    eventId: '00000000-0000-4000-8000-0000000000ff',
+    matchId: MATCH_ID,
+    v: MATCH_EVENT_VERSION,
+    at: AT,
+    by: 'owner',
+    type: 'squad_set',
+    players: PLAYERS,
+  };
+  const lineup = {
+    eventId: '00000000-0000-4000-8000-000000000011',
+    matchId: MATCH_ID,
+    v: MATCH_EVENT_VERSION,
+    at: AT,
+    by: 'owner',
+    type: 'lineup_set',
+    assignments: [
+      { slotId: 'gk', playerId: GINA },
+      { slotId: 'cb-left', playerId: BO },
+      { slotId: 'cb-right', playerId: CLEO },
+      { slotId: 'lm', playerId: DANI },
+      { slotId: 'cm', playerId: ELI },
+      { slotId: 'rm', playerId: FATIMA },
+      { slotId: 'st', playerId: GUS },
+    ],
+    bench: [ANNA],
+  };
+  const started = {
+    eventId: '00000000-0000-4000-8000-0000000000bb',
+    matchId: MATCH_ID,
+    v: MATCH_EVENT_VERSION,
+    at: AT,
+    by: 'owner',
+    type: 'period_started',
+    periodNumber: 1,
+  };
+
+  it('behåller loggens ordning i stället för att lotta om den', () => {
+    const state = deriveMatchState(
+      [created, squad, lineup, started],
+      new Date('2026-09-20T13:00:00.000Z'),
+    );
+
+    expect(state.ignored).toEqual([]);
+    expect(Object.keys(state.currentSlots)).toHaveLength(7);
+    expect(state.currentSlots['gk']).toBe(GINA);
+    expect(state.bench).toEqual([ANNA]);
+  });
+});
