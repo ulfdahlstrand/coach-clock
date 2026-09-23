@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { deriveFairnessState, MATCH_EVENT_VERSION } from './index.js';
+import { deriveFairnessState, deriveMatchState, MATCH_EVENT_VERSION } from './index.js';
 
 const MATCH_ID = '11111111-1111-4111-8111-111111111111';
 const ids = {
@@ -36,7 +36,11 @@ function event(at: string, payload: Record<string, unknown>) {
  * Testerna räknar på några minuter långa matcher, så grundmatchen har en kort
  * bytestid. Förvalet på fyra minuter prövas separat nedan.
  */
-function foundation(bench = [ids.e, ids.f], idealShiftSeconds: number | null = 60) {
+function foundation(
+  bench = [ids.e, ids.f],
+  idealShiftSeconds: number | null = 60,
+  positionMode: 'time' | 'best' | 'even' | null = null,
+) {
   counter = 0;
   return [
     event('2026-09-20T13:00:00.000Z', {
@@ -48,6 +52,7 @@ function foundation(bench = [ids.e, ids.f], idealShiftSeconds: number | null = 6
       opponent: 'IF Test',
       // null efterliknar en match skapad innan fältet fanns.
       ...(idealShiftSeconds === null ? {} : { idealShiftSeconds }),
+      ...(positionMode === null ? {} : { positionMode }),
     }),
     event('2026-09-20T13:00:00.000Z', { type: 'squad_set', players: allPlayers }),
     event('2026-09-20T13:00:00.000Z', {
@@ -320,5 +325,86 @@ describe('bytestid', () => {
     const fairness = deriveFairnessState(foundation(undefined, null), at(120));
 
     expect(fairness.idealShiftMs).toBe(240_000);
+  });
+});
+
+describe('positioner i bytesförslagen', () => {
+  /*
+   * 5 mot 5: MB (försvar), VM och HM (mittfält), CA (anfall). F görs otillgänglig
+   * så att den inbytta spelaren är förutsägbar. Lägena ska ge olika svar —
+   * annars bevisar testerna ingenting.
+   */
+  const fUnavailable = () =>
+    event('2026-09-20T13:00:00.000Z', {
+      type: 'availability_changed',
+      playerId: ids.f,
+      available: false,
+      from: '2026-09-20T13:00:00.000Z',
+    });
+
+  /** A (startade som mittback) byts ut mot E efter en minut och ska tillbaka in. */
+  function defenderReturns(mode: 'time' | 'best' | 'even') {
+    return [
+      ...foundation(undefined, 60, mode),
+      fUnavailable(),
+      event('2026-09-20T13:01:00.000Z', {
+        type: 'substitution_confirmed',
+        swaps: [{ slotId: 'cb', outPlayerId: ids.a, inPlayerId: ids.e }],
+      }),
+    ];
+  }
+
+  it('bara speltid tar ut den som spelat mest', () => {
+    const fairness = deriveFairnessState(defenderReturns('time'), at(240));
+    expect(fairness.suggestedSubstitution).toEqual({ outPlayerId: ids.b, inPlayerId: ids.a });
+  });
+
+  it('bästa positioner byter på den inbyttas bästa lagdel', () => {
+    const fairness = deriveFairnessState(defenderReturns('best'), at(240));
+    // A startade som mittback — hon tar tillbaka platsen från E.
+    expect(fairness.positionMode).toBe('best');
+    expect(fairness.suggestedSubstitution).toEqual({ outPlayerId: ids.e, inPlayerId: ids.a });
+  });
+
+  it('jämn fördelning byter på den lagdel den inbytta spelat minst i', () => {
+    // B spelade mittfält en minut. A flyttas upp på mittfältet, så att den som
+    // spelat mest (och tas ut av "bara speltid") står på B:s gamla lagdel.
+    const movedToMidfield = (mode: 'time' | 'even') => [
+      ...foundation(undefined, 60, mode),
+      fUnavailable(),
+      event('2026-09-20T13:01:00.000Z', {
+        type: 'substitution_confirmed',
+        swaps: [{ slotId: 'lm', outPlayerId: ids.b, inPlayerId: ids.e }],
+      }),
+      event('2026-09-20T13:01:00.000Z', {
+        type: 'player_moved',
+        playerId: ids.a,
+        fromSlotId: 'cb',
+        toSlotId: 'lm',
+      }),
+    ];
+    const even = deriveFairnessState(movedToMidfield('even'), at(240));
+    const time = deriveFairnessState(movedToMidfield('time'), at(240));
+
+    expect(time.suggestedSubstitution?.outPlayerId).toBe(ids.a);
+    // B har ingen tid i försvar eller anfall; anfallaren har spelat mest av de två.
+    expect(even.suggestedSubstitution).toEqual({ outPlayerId: ids.d, inPlayerId: ids.b });
+  });
+
+  it('faller tillbaka på lägst skuld när den inbytta inte har någon lagdel än', () => {
+    // F har suttit på bänken hela matchen och har ingen bästa lagdel.
+    const fairness = deriveFairnessState(foundation(undefined, 60, 'best'), at(240));
+    expect(fairness.suggestedSubstitution).toEqual({ outPlayerId: ids.a, inPlayerId: ids.e });
+  });
+
+  it('ger bänkstartaren den första lagdel hon sätts in på', () => {
+    const state = deriveMatchState(defenderReturns('best'), at(240));
+    expect(state.players[ids.e]?.bestRole).toBe('defender');
+    expect(state.players[ids.a]?.bestRole).toBe('defender');
+    expect(state.players[ids.f]?.bestRole).toBeNull();
+  });
+
+  it('ger äldre matcher läget bara speltid', () => {
+    expect(deriveFairnessState(foundation(), at(120)).positionMode).toBe('time');
   });
 });

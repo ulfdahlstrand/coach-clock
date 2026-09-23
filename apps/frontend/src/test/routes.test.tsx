@@ -45,6 +45,20 @@ test('/matches/new renderar den telefonanpassade matchstarten', async () => {
   expect(screen.getByRole('button', { name: 'Starta match' })).toBeDefined();
 });
 
+test('/matches/new har positionsläget förvalt till bara speltid', async () => {
+  await renderAt('/matches/new');
+
+  const mode = screen.getByRole<HTMLSelectElement>('combobox', {
+    name: 'Positioner i bytesförslagen',
+  });
+  expect(mode.value).toBe('time');
+  expect([...mode.options].map((option) => option.textContent)).toEqual([
+    'Bara speltid',
+    'Bästa positioner',
+    'Jämn fördelning',
+  ]);
+});
+
 test('/matches/new har bytestiden förvald till fyra minuter', async () => {
   await renderAt('/matches/new');
 

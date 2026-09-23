@@ -1,6 +1,11 @@
 import { oc } from '@orpc/contract';
 import { z } from 'zod';
-import { matchEventSchema, matchFormatSchema, slotAssignmentSchema } from './events.js';
+import {
+  matchEventSchema,
+  matchFormatSchema,
+  positionModeSchema,
+  slotAssignmentSchema,
+} from './events.js';
 import {
   createPlayerInputSchema,
   createPlayerOutputSchema,
@@ -59,6 +64,8 @@ export const createMatchInputSchema = z.object({
     .min(60, 'Bytestiden måste vara minst en minut')
     .max(1200, 'Bytestiden får vara högst 20 minuter')
     .optional(),
+  /** Hur bytesförslagen tar hänsyn till positioner (#91). Saknas det gäller `time`. */
+  positionMode: positionModeSchema.optional(),
   presentPlayerIds: z.array(z.uuid()).min(1).refine(uniqueIds, 'Spelarna måste vara unika'),
   assignments: z.array(slotAssignmentSchema).min(1),
 });

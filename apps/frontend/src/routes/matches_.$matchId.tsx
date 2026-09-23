@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { BenchGrid, formationAssignments, MatchPitch } from '@/components/match-pitch';
 import { eventLabel, latestUndoableEvent } from '@/components/match-event-history';
 import { apiClient } from '@/lib/api-client';
+import { POSITION_MODE_LABELS } from '@/lib/match-forms';
 import { eventOutbox, startOutboxDrainer, withClientEventId } from '@/lib/event-outbox';
 import { createMatchEventStream } from '@/lib/match-event-stream';
 import { deriveVisibleMatchClock, formatClock, matchControlState } from '@/lib/match-clock-view';
@@ -536,6 +537,9 @@ function LiveMatchPage() {
                   Bytestid
                   <span className="mt-1 block text-sm font-semibold text-foreground">
                     {formatShift(fairness.idealShiftMs)}
+                  </span>
+                  <span className="mt-0.5 block">
+                    {POSITION_MODE_LABELS[fairness.positionMode]}
                   </span>
                 </p>
               </div>

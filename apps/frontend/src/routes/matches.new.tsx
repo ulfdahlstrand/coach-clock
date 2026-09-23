@@ -1,11 +1,13 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { PlayIcon } from 'lucide-react';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import {
   DEFAULT_IDEAL_SHIFT_SECONDS,
   FORMATIONS,
+  POSITION_MODES,
+  type PositionMode,
   type Formation,
   type MatchFormat,
 } from '@coach-clock/contracts';
@@ -14,7 +16,10 @@ import { apiClient } from '@/lib/api-client';
 import {
   type CreateMatchFormValues,
   createMatchResolver,
+  applyTeamDefaults,
   loadMatchSetupDefaults,
+  POSITION_MODE_LABELS,
+  type MatchSetupDefaults,
   saveMatchSetupDefaults,
 } from '@/lib/match-forms';
 
@@ -26,6 +31,7 @@ const initial: CreateMatchFormValues = {
   periodCount: 3,
   periodLengthSeconds: 900,
   idealShiftSeconds: DEFAULT_IDEAL_SHIFT_SECONDS,
+  positionMode: 'time',
   presentPlayerIds: [],
   assignments: [],
 };
@@ -72,12 +78,35 @@ function MatchSetupPage() {
     },
   });
 
+  /** Inställningar tränaren själv ändrat — lagets förval får inte skriva över dem (#92). */
+  const touched = useRef(new Set<keyof MatchSetupDefaults>());
+  const touch = (field: keyof MatchSetupDefaults) => touched.current.add(field);
+
+  /** Byter lag och fyller i lagets förval där tränaren inte redan valt något. */
+  function resetForTeam(nextTeamId: string): void {
+    const values = form.getValues();
+    const setup = applyTeamDefaults(
+      {
+        format: values.format,
+        formationId: values.formationId,
+        periodCount: values.periodCount,
+        periodLengthSeconds: values.periodLengthSeconds,
+        ...(values.idealShiftSeconds === undefined
+          ? {}
+          : { idealShiftSeconds: values.idealShiftSeconds }),
+        ...(values.positionMode === undefined ? {} : { positionMode: values.positionMode }),
+      },
+      loadMatchSetupDefaults(nextTeamId),
+      touched.current,
+    );
+    form.reset({ ...initial, opponent: values.opponent, teamId: nextTeamId, ...setup });
+  }
+
   useEffect(() => {
     if (teams.data !== undefined && teamId === '' && teams.data[0] !== undefined) {
-      const selected = teams.data[0];
-      const defaults = loadMatchSetupDefaults(selected.id);
-      form.reset({ ...initial, teamId: selected.id, ...defaults });
+      resetForTeam(teams.data[0].id);
     }
+    // resetForTeam läser formuläret vid anropet; den ska inte trigga effekten.
   }, [form, teamId, teams.data]);
 
   useEffect(() => {
@@ -92,13 +121,13 @@ function MatchSetupPage() {
   }, [activePlayers, form, players.data]);
 
   function chooseTeam(nextTeamId: string): void {
-    const defaults = loadMatchSetupDefaults(nextTeamId);
-    form.reset({ ...initial, teamId: nextTeamId, ...defaults });
+    resetForTeam(nextTeamId);
   }
 
   function chooseFormat(nextFormat: MatchFormat): void {
     const nextFormation = formationsFor(nextFormat)[0];
     if (nextFormation === undefined) return;
+    touch('format');
     form.setValue('format', nextFormat);
     form.setValue('formationId', nextFormation.id);
     form.setValue('assignments', assignFirstPlayers(nextFormation, presentPlayerIds));
@@ -186,6 +215,7 @@ function MatchSetupPage() {
                 className="border-input bg-background min-h-touch w-full rounded-lg border px-3"
                 {...form.register('formationId')}
                 onChange={(event) => {
+                  touch('formationId');
                   form.setValue('formationId', event.target.value);
                   const next = FORMATIONS.find((item) => item.id === event.target.value);
                   if (next !== undefined)
@@ -208,7 +238,10 @@ function MatchSetupPage() {
                 min="1"
                 max="10"
                 className="border-input bg-background min-h-touch w-full rounded-lg border px-3"
-                {...form.register('periodCount', { valueAsNumber: true })}
+                {...form.register('periodCount', {
+                  valueAsNumber: true,
+                  onChange: () => touch('periodCount'),
+                })}
               />
             </label>
             <label className="space-y-2">
@@ -219,11 +252,12 @@ function MatchSetupPage() {
                 max="120"
                 className="border-input bg-background min-h-touch w-full rounded-lg border px-3"
                 value={Math.round((form.watch('periodLengthSeconds') || 0) / 60)}
-                onChange={(event) =>
+                onChange={(event) => {
+                  touch('periodLengthSeconds');
                   form.setValue('periodLengthSeconds', Number(event.target.value) * 60, {
                     shouldValidate: true,
-                  })
-                }
+                  });
+                }}
               />
             </label>
           </div>
@@ -233,11 +267,12 @@ function MatchSetupPage() {
               aria-label="Bytestid"
               className="border-input bg-background min-h-touch w-full rounded-lg border px-3"
               value={form.watch('idealShiftSeconds') ?? DEFAULT_IDEAL_SHIFT_SECONDS}
-              onChange={(event) =>
+              onChange={(event) => {
+                touch('idealShiftSeconds');
                 form.setValue('idealShiftSeconds', Number(event.target.value), {
                   shouldValidate: true,
-                })
-              }
+                });
+              }}
             >
               {[3, 4, 5, 6].map((minutes) => (
                 <option key={minutes} value={minutes * 60}>
@@ -247,6 +282,27 @@ function MatchSetupPage() {
             </select>
             <span className="text-muted-foreground block text-xs">
               Hur länge en spelare är inne innan appen föreslår byte. Du kan alltid byta tidigare.
+            </span>
+          </label>
+          <label className="block space-y-2">
+            <span className="text-sm font-medium">Positioner i bytesförslagen</span>
+            <select
+              aria-label="Positioner i bytesförslagen"
+              className="border-input bg-background min-h-touch w-full rounded-lg border px-3"
+              value={form.watch('positionMode') ?? 'time'}
+              onChange={(event) => {
+                touch('positionMode');
+                form.setValue('positionMode', event.target.value as PositionMode);
+              }}
+            >
+              {POSITION_MODES.map((mode) => (
+                <option key={mode} value={mode}>
+                  {POSITION_MODE_LABELS[mode]}
+                </option>
+              ))}
+            </select>
+            <span className="text-muted-foreground block text-xs">
+              Styr bara var bytet görs. När och vem som går in avgörs av bytestid och speltid.
             </span>
           </label>
         </div>
