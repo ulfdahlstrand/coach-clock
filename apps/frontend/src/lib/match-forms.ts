@@ -35,3 +35,36 @@ export function loadMatchSetupDefaults(teamId: string): MatchSetupDefaults | und
 export function saveMatchSetupDefaults(teamId: string, values: MatchSetupDefaults): void {
   localStorage.setItem(`${defaultPrefix}${teamId}`, JSON.stringify(values));
 }
+
+/** Vilka matchinställningar tränaren själv har ändrat i formuläret. */
+export type TouchedSetupFields = ReadonlySet<keyof MatchSetupDefaults>;
+
+/**
+ * Lägger lagets sparade förval över det som redan står i formuläret, men bara
+ * där tränaren inte själv gjort ett val (#92). Annars hoppade en vald spelform
+ * tillbaka till förra matchens när laget valdes.
+ *
+ * Spelform och formation hör ihop: en formation tillhör en spelform, och
+ * uppställningen byggs av formationens platser. Har tränaren rört någon av dem
+ * behålls båda.
+ */
+export function applyTeamDefaults(
+  current: MatchSetupDefaults,
+  defaults: MatchSetupDefaults | undefined,
+  touched: TouchedSetupFields,
+): MatchSetupDefaults {
+  if (defaults === undefined) return current;
+  const keepShape = touched.has('format') || touched.has('formationId');
+  const pick = <K extends keyof MatchSetupDefaults>(key: K): MatchSetupDefaults[K] =>
+    touched.has(key) ? current[key] : defaults[key];
+
+  return {
+    format: keepShape ? current.format : defaults.format,
+    formationId: keepShape ? current.formationId : defaults.formationId,
+    periodCount: pick('periodCount'),
+    periodLengthSeconds: pick('periodLengthSeconds'),
+    ...(pick('idealShiftSeconds') === undefined
+      ? {}
+      : { idealShiftSeconds: pick('idealShiftSeconds') }),
+  };
+}
