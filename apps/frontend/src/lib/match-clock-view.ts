@@ -1,4 +1,4 @@
-import { matchClock, type MatchClock, type MatchEvent } from '@coach-clock/contracts';
+import { deriveMatchState, type MatchClock, type MatchEvent } from '@coach-clock/contracts';
 
 /** Formats a duration for the large sideline clock without ever owning time itself. */
 export function formatClock(milliseconds: number): string {
@@ -17,5 +17,55 @@ export function deriveVisibleMatchClock(
   events: readonly MatchEvent[],
   serverAdjustedNow: Date | undefined,
 ): MatchClock | undefined {
-  return serverAdjustedNow === undefined ? undefined : matchClock(events, serverAdjustedNow);
+  /*
+   * Klockan räknas på samma loggvy som resten av matchen: efter ångrade
+   * händelser, rättade tider och ogiltiga övergångar. Den råa loggen gav en
+   * klocka som inte märkte att en paus ångrats eller en starttid rättats.
+   */
+  return serverAdjustedNow === undefined
+    ? undefined
+    : deriveMatchState(events, serverAdjustedNow).clock;
+}
+
+export type MatchControlState = {
+  /** Märket vid rubriken. */
+  readonly status: 'EJ STARTAD' | 'PÅGÅR' | 'PAUS' | 'PERIODPAUS' | 'SLUT';
+  readonly startLabel: string;
+  readonly notStarted: boolean;
+  /** Sista perioden är avblåst men matchen inte avslutad — dags för Avsluta match. */
+  readonly matchOver: boolean;
+};
+
+/**
+ * Vad klockknapparna ska visa. Matchen startar inte av sig själv (#89), så
+ * tillståndet före avspark måste gå att skilja från en pausad klocka.
+ */
+export function matchControlState(input: {
+  readonly periodNumber: number | null | undefined;
+  readonly running: boolean;
+  readonly currentPeriodEnded: boolean;
+  readonly periodCount: number | undefined;
+  readonly ended: boolean;
+}): MatchControlState {
+  const notStarted = input.periodNumber === null || input.periodNumber === undefined;
+  const activePeriod = input.periodNumber ?? 0;
+  const isFinalPeriod = input.periodCount !== undefined && activePeriod >= input.periodCount;
+  const matchOver = isFinalPeriod && input.currentPeriodEnded && !input.ended;
+  const startLabel = input.running
+    ? 'Spelar'
+    : notStarted
+      ? 'Starta period 1'
+      : input.currentPeriodEnded
+        ? `Starta period ${String(activePeriod + 1)}`
+        : 'Fortsätt';
+  const status = input.ended
+    ? 'SLUT'
+    : notStarted
+      ? 'EJ STARTAD'
+      : input.running
+        ? 'PÅGÅR'
+        : input.currentPeriodEnded
+          ? 'PERIODPAUS'
+          : 'PAUS';
+  return { status, startLabel, notStarted, matchOver };
 }

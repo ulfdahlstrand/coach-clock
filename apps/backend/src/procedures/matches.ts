@@ -1,4 +1,10 @@
-import { canAppendMatchEvent, contract, FORMATIONS, type MatchEvent } from '@coach-clock/contracts';
+import {
+  canAppendMatchEvent,
+  contract,
+  DEFAULT_IDEAL_SHIFT_SECONDS,
+  FORMATIONS,
+  type MatchEvent,
+} from '@coach-clock/contracts';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { ORPCError, implement } from '@orpc/server';
 import type { ServerResponse } from 'node:http';
@@ -118,6 +124,7 @@ export const createMatch = os.matches.create.handler(async ({ input, context }) 
           periods: input.periodCount,
           periodLengthSeconds: input.periodLengthSeconds,
           opponent: input.opponent,
+          idealShiftSeconds: input.idealShiftSeconds ?? DEFAULT_IDEAL_SHIFT_SECONDS,
         },
       },
       {
@@ -134,7 +141,8 @@ export const createMatch = os.matches.create.handler(async ({ input, context }) 
         },
       },
       { type: 'lineup_set', payload: { by: 'owner', v: 1, assignments: input.assignments, bench } },
-      { type: 'period_started', payload: { by: 'owner', v: 1, periodNumber: 1 } },
+      // Ingen period_started här: klockan startar när domaren eller tränaren
+      // blåser igång, inte när matchen läggs upp i appen (#89).
     ] as const;
     await trx
       .insertInto('match_events')
@@ -270,6 +278,7 @@ export const appendMatchEvent = os.matches.events.handler(async ({ input, contex
     // en permanent, svårtolkad post i loggen. En gravsten får i sin tur
     // ångra en tidigare rättelse, men en tid kan bara rättas på en faktisk
     // matchhändelse (inte på själva granskningsspåret).
+    let undoneType: string | undefined;
     if (input.type === 'event_undone' || input.type === 'event_time_corrected') {
       const target = await trx
         .selectFrom('match_events')
@@ -283,6 +292,7 @@ export const appendMatchEvent = os.matches.events.handler(async ({ input, contex
           message: 'Händelsen som ska korrigeras finns inte i den här matchen',
         });
       }
+      if (input.type === 'event_undone') undoneType = target.type;
       if (
         input.type === 'event_time_corrected' &&
         (target.type === 'event_undone' || target.type === 'event_time_corrected')
@@ -327,6 +337,25 @@ export const appendMatchEvent = os.matches.events.handler(async ({ input, contex
       })
       .returning(['event_id', 'match_id', 'seq', 'received_at'])
       .executeTakeFirstOrThrow();
+
+    /*
+     * Matchens status följer loggen. Delningskoden och domarlänken stängs när
+     * matchen avslutas (med respit räknat från ended_at), så ett avslut måste
+     * synas här — och ett ångrat avslut måste öppna matchen igen.
+     */
+    if (input.type === 'match_ended') {
+      await trx
+        .updateTable('matches')
+        .set({ status: 'ended', ended_at: context.now() })
+        .where('id', '=', input.matchId)
+        .execute();
+    } else if (undoneType === 'match_ended') {
+      await trx
+        .updateTable('matches')
+        .set({ status: 'live', ended_at: null })
+        .where('id', '=', input.matchId)
+        .execute();
+    }
 
     return {
       created: true,

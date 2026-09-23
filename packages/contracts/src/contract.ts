@@ -50,6 +50,15 @@ export const createMatchInputSchema = z.object({
     .int()
     .min(1, 'Perioden måste vara minst en minut')
     .max(7200, 'Perioden får vara högst två timmar'),
+  /**
+   * Önskad bytestid (#82). Valfri i API:t så att en äldre, cachad klient kan
+   * skapa matcher; backenden fyller då i DEFAULT_IDEAL_SHIFT_SECONDS.
+   */
+  idealShiftSeconds: z
+    .int()
+    .min(60, 'Bytestiden måste vara minst en minut')
+    .max(1200, 'Bytestiden får vara högst 20 minuter')
+    .optional(),
   presentPlayerIds: z.array(z.uuid()).min(1).refine(uniqueIds, 'Spelarna måste vara unika'),
   assignments: z.array(slotAssignmentSchema).min(1),
 });

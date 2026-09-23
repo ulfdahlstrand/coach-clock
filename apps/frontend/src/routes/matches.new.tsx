@@ -3,7 +3,12 @@ import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { PlayIcon } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
-import { FORMATIONS, type Formation, type MatchFormat } from '@coach-clock/contracts';
+import {
+  DEFAULT_IDEAL_SHIFT_SECONDS,
+  FORMATIONS,
+  type Formation,
+  type MatchFormat,
+} from '@coach-clock/contracts';
 import { Button } from '@/components/ui/button';
 import { apiClient } from '@/lib/api-client';
 import {
@@ -20,6 +25,7 @@ const initial: CreateMatchFormValues = {
   formationId: '7v7-2-3-1',
   periodCount: 3,
   periodLengthSeconds: 900,
+  idealShiftSeconds: DEFAULT_IDEAL_SHIFT_SECONDS,
   presentPlayerIds: [],
   assignments: [],
 };
@@ -221,6 +227,28 @@ function MatchSetupPage() {
               />
             </label>
           </div>
+          <label className="block space-y-2">
+            <span className="text-sm font-medium">Bytestid</span>
+            <select
+              aria-label="Bytestid"
+              className="border-input bg-background min-h-touch w-full rounded-lg border px-3"
+              value={form.watch('idealShiftSeconds') ?? DEFAULT_IDEAL_SHIFT_SECONDS}
+              onChange={(event) =>
+                form.setValue('idealShiftSeconds', Number(event.target.value), {
+                  shouldValidate: true,
+                })
+              }
+            >
+              {[3, 4, 5, 6].map((minutes) => (
+                <option key={minutes} value={minutes * 60}>
+                  {minutes} minuter
+                </option>
+              ))}
+            </select>
+            <span className="text-muted-foreground block text-xs">
+              Hur länge en spelare är inne innan appen föreslår byte. Du kan alltid byta tidigare.
+            </span>
+          </label>
         </div>
         <div className="space-y-3">
           <div className="flex items-center justify-between">

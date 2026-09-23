@@ -1,11 +1,22 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute } from '@tanstack/react-router';
-import { deriveMatchState } from '@coach-clock/contracts';
+import {
+  deriveMatchState,
+  type EventTimeCorrectedEvent,
+  type EventUndoneEvent,
+} from '@coach-clock/contracts';
 import { CheckCircle2Icon, Share2Icon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { MatchConflictPanel } from '@/components/match-conflict-panel';
+import { MatchEventHistory } from '@/components/match-event-history';
 import { apiClient } from '@/lib/api-client';
+import { withClientEventId } from '@/lib/event-outbox';
 import { createMatchSummary, formatMatchDuration, roleLabel } from '@/lib/match-summary';
+import { useServerTime } from '@/lib/server-time';
+
+type Correction =
+  | Omit<EventUndoneEvent, 'eventId' | 'matchId' | 'v' | 'at' | 'by'>
+  | Omit<EventTimeCorrectedEvent, 'eventId' | 'matchId' | 'v' | 'at' | 'by'>;
 
 function signedDuration(milliseconds: number): string {
   const prefix = milliseconds > 0 ? '+' : milliseconds < 0 ? '−' : '±';
@@ -23,6 +34,26 @@ function SummaryPage() {
     queryFn: () => apiClient.matches.listEvents({ matchId, sinceSeq: 0 }),
   });
   const eventLog = events.data?.map((item) => item.event) ?? [];
+  const queryClient = useQueryClient();
+  const serverTime = useServerTime();
+  /*
+   * Rättelser efter matchen är inte tidskritiska och går därför direkt till
+   * API:t, utan offlinekön. Nekar servern visas det här i stället för att
+   * rättelsen ligger och väntar i en kö som aldrig töms.
+   */
+  const correct = useMutation({
+    mutationFn: (correction: Correction) => {
+      const at = serverTime.data?.nowIso();
+      if (at === undefined) throw new Error('Serverns tid saknas.');
+      return apiClient.matches.events(
+        withClientEventId({ ...correction, matchId, v: 1, at, by: 'owner' }),
+      );
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['match-events', matchId] });
+      void queryClient.invalidateQueries({ queryKey: ['match', matchId] });
+    },
+  });
   const finishedAt = match.data?.endedAt ?? new Date().toISOString();
   const finishedAtDate = new Date(finishedAt);
   const summary = createMatchSummary(eventLog, finishedAtDate);
@@ -141,6 +172,30 @@ function SummaryPage() {
             </li>
           ))}
         </ol>
+      </div>
+
+      <div className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+        <div className="mb-3">
+          <h2 className="text-lg font-bold text-stone-900">Händelser</h2>
+          <p className="text-sm text-stone-600">Rätta i efterhand utan att radera matchloggen.</p>
+        </div>
+        {correct.error ? (
+          <p role="alert" className="text-destructive mb-3 text-sm">
+            Kunde inte spara rättelsen. Bara tränare i matchen kan rätta händelser.
+          </p>
+        ) : null}
+        <MatchEventHistory
+          events={eventLog}
+          disabled={correct.isPending || serverTime.data === undefined}
+          onUndo={(event) => correct.mutate({ type: 'event_undone', targetEventId: event.eventId })}
+          onCorrectTime={(event, correctedAt) =>
+            correct.mutate({
+              type: 'event_time_corrected',
+              targetEventId: event.eventId,
+              correctedAt,
+            })
+          }
+        />
       </div>
 
       <Button

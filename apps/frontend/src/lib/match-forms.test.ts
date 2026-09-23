@@ -1,5 +1,9 @@
 import { expect, test } from 'vitest';
-import { createMatchFormSchema } from './match-forms';
+import {
+  createMatchFormSchema,
+  loadMatchSetupDefaults,
+  saveMatchSetupDefaults,
+} from './match-forms';
 
 test('matchstartformuläret använder kontraktets regler för startelvan', () => {
   const input = {
@@ -30,4 +34,17 @@ test('tom motståndare ger ett svenskt meddelande, inte Zods engelska standardte
 
   // Formuläret visar meddelandet rakt av, så det måste gå att läsa för en tränare.
   expect(parsed.error?.issues[0]?.message).toBe('Ange motståndare');
+});
+
+test('lagets förval minns bytestiden till nästa match', () => {
+  const teamId = '00000000-0000-4000-8000-000000000009';
+  saveMatchSetupDefaults(teamId, {
+    format: 7,
+    formationId: '7v7-2-3-1',
+    periodCount: 3,
+    periodLengthSeconds: 900,
+    idealShiftSeconds: 300,
+  });
+
+  expect(loadMatchSetupDefaults(teamId)?.idealShiftSeconds).toBe(300);
 });
