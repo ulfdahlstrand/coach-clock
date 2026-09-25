@@ -41,6 +41,7 @@ Alla kommandon körs via [Turborepo](https://turbo.build) över workspaces.
 | Kommando                                   | Gör                                    |
 | ------------------------------------------ | -------------------------------------- |
 | `npm run docker:db`                        | Startar Postgres 16 på port 5434       |
+| `npm run docker:test-db`                   | Skapar integrationstesternas databas   |
 | `npm run docker:down`                      | Stoppar och river containern           |
 | `npm run migrate -w apps/backend`          | Kör migrationerna till senaste         |
 | `npm run migrate:down -w apps/backend`     | Rullar tillbaka en migration           |
@@ -48,6 +49,11 @@ Alla kommandon körs via [Turborepo](https://turbo.build) över workspaces.
 
 Enhetstesterna (`npm test`) rör aldrig databasen — Kysely-klienten är en lazy singleton
 och ansluter först när någon faktiskt frågar.
+
+Integrationstesterna droppar alla tabeller innan de kör. De kör därför bara mot
+`TEST_DATABASE_URL` — en separat databas vars namn innehåller "test" — och vägrar starta
+utan den eller mot utvecklingsdatabasen. Skapa den en gång med `npm run docker:test-db`
+och lägg adressen i `.env` (se `.env.example`).
 
 ## Driftsättning
 

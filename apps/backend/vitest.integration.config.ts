@@ -4,6 +4,9 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.integration.test.ts'],
+    // Pekar om DATABASE_URL till TEST_DATABASE_URL och vägrar köra mot
+    // utvecklingsdatabasen — testerna droppar alla tabeller (#78).
+    setupFiles: ['./src/integration-setup.ts'],
     // En databas, en delad migrationstabell — kör inte filerna parallellt.
     fileParallelism: false,
     // `FileMigrationProvider` laddar migrationsfilerna med en dynamisk import

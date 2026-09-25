@@ -14,7 +14,8 @@ export interface Env {
 const DEFAULT_PORT = 4002;
 const DEFAULT_CORS_ORIGIN = 'http://localhost:5174';
 /** Matchar docker/docker-compose.yml. Används aldrig i produktion. */
-const DEFAULT_DEV_DATABASE_URL = 'postgres://coach_clock:coach_clock@localhost:5434/coach_clock';
+export const DEFAULT_DEV_DATABASE_URL =
+  'postgres://coach_clock:coach_clock@localhost:5434/coach_clock';
 
 function parsePort(raw: string | undefined): number {
   if (raw === undefined || raw.trim() === '') {
