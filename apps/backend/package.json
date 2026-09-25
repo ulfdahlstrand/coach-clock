@@ -11,6 +11,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "migrate": "node --import tsx/esm src/db/migrate.ts",
+    "migrate:deploy": "node --import tsx/esm src/db/migrate.ts",
     "migrate:down": "node --import tsx/esm src/db/migrate.ts down",
     "test:integration": "vitest run --config vitest.integration.config.ts"
   },
