@@ -1,5 +1,6 @@
 import { oc } from '@orpc/contract';
 import { z } from 'zod';
+import { getMeContract, logoutContract } from './auth.js';
 import {
   matchEventSchema,
   matchFormatSchema,
@@ -263,6 +264,10 @@ export const getServerTimeContract = oc
  * typer — kontraktet är enda källan.
  */
 export const contract = oc.router({
+  auth: {
+    me: getMeContract,
+    logout: logoutContract,
+  },
   listTeams: oc
     .route({ method: 'GET', path: '/teams' })
     .input(listTeamsInputSchema)

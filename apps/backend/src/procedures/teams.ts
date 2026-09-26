@@ -1,16 +1,26 @@
 import { contract } from '@coach-clock/contracts';
 import { ORPCError, implement } from '@orpc/server';
 import type { Kysely, Updateable } from 'kysely';
+import { requireUser } from '../auth/require-user.js';
 import { toPlayer, toTeam, type Database, type PlayerTable } from '../db/types.js';
 import type { ApiContext } from './matches.js';
 
 const os = implement(contract).$context<ApiContext>();
 
-async function requireTeam(db: Kysely<Database>, teamId: string): Promise<void> {
+/**
+ * Laget måste finnas och tillhöra tränaren. Någon annans lag svarar exakt som
+ * ett lag som inte finns, så att lag-id:n inte kan sonderas.
+ */
+async function requireOwnedTeam(
+  db: Kysely<Database>,
+  teamId: string,
+  userId: string,
+): Promise<void> {
   const team = await db
     .selectFrom('teams')
     .select('id')
     .where('id', '=', teamId)
+    .where('owner_user_id', '=', userId)
     .executeTakeFirst();
 
   if (team === undefined) {
@@ -19,9 +29,11 @@ async function requireTeam(db: Kysely<Database>, teamId: string): Promise<void> 
 }
 
 export const listTeams = os.listTeams.handler(async ({ context }) => {
+  const user = requireUser(context);
   const rows = await context.db
     .selectFrom('teams')
     .selectAll()
+    .where('owner_user_id', '=', user.id)
     .orderBy('created_at')
     .orderBy('id')
     .execute();
@@ -30,9 +42,10 @@ export const listTeams = os.listTeams.handler(async ({ context }) => {
 });
 
 export const createTeam = os.createTeam.handler(async ({ input, context }) => {
+  const user = requireUser(context);
   const row = await context.db
     .insertInto('teams')
-    .values({ name: input.name })
+    .values({ name: input.name, owner_user_id: user.id })
     .returningAll()
     .executeTakeFirstOrThrow();
 
@@ -40,8 +53,9 @@ export const createTeam = os.createTeam.handler(async ({ input, context }) => {
 });
 
 export const listPlayers = os.listPlayers.handler(async ({ input, context }) => {
+  const user = requireUser(context);
   const db = context.db;
-  await requireTeam(db, input.teamId);
+  await requireOwnedTeam(db, input.teamId, user.id);
 
   const rows = await db
     .selectFrom('players')
@@ -56,8 +70,9 @@ export const listPlayers = os.listPlayers.handler(async ({ input, context }) => 
 });
 
 export const createPlayer = os.createPlayer.handler(async ({ input, context }) => {
+  const user = requireUser(context);
   const db = context.db;
-  await requireTeam(db, input.teamId);
+  await requireOwnedTeam(db, input.teamId, user.id);
 
   const row = await db
     .insertInto('players')
@@ -74,6 +89,8 @@ export const createPlayer = os.createPlayer.handler(async ({ input, context }) =
 });
 
 export const updatePlayer = os.updatePlayer.handler(async ({ input, context }) => {
+  const user = requireUser(context);
+  await requireOwnedTeam(context.db, input.teamId, user.id);
   const updates: Updateable<PlayerTable> = {};
 
   if (input.name !== undefined) updates.name = input.name;

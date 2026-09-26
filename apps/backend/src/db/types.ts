@@ -49,9 +49,38 @@ export type ParticipantRole = 'owner' | 'coach' | 'referee' | 'viewer';
  */
 export type JsonObject = Record<string, unknown>;
 
+export interface UserTable {
+  id: Generated<string>;
+  email: string;
+  name: string;
+  image_url: string | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+/** En OAuth-identitet. `provider` + `subject` är unikt. */
+export interface IdentityTable {
+  id: Generated<string>;
+  user_id: string;
+  provider: string;
+  subject: string;
+  created_at: Generated<Date>;
+}
+
+export interface SessionTable {
+  id: Generated<string>;
+  user_id: string;
+  /** sha256 i hex av sessionstoken. Klartexttoken lagras aldrig. */
+  token_hash: string;
+  expires_at: Date;
+  created_at: Generated<Date>;
+}
+
 export interface TeamTable {
   id: Generated<string>;
   name: string;
+  /** Null för lag skapade innan inloggningen fanns — de syns inte för någon. */
+  owner_user_id: string | null;
   created_at: Generated<Date>;
 }
 
@@ -235,6 +264,9 @@ export function toStoredMatchEvent(row: Selectable<MatchEventTable>): StoredMatc
 }
 
 export interface Database {
+  users: UserTable;
+  identities: IdentityTable;
+  sessions: SessionTable;
   teams: TeamTable;
   players: PlayerTable;
   matches: MatchTable;

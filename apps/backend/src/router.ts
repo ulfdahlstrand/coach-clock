@@ -7,6 +7,7 @@ import {
   listTeams,
   updatePlayer,
 } from './procedures/teams.js';
+import { getMe, logout } from './procedures/auth.js';
 import type { ApiContext } from './procedures/matches.js';
 import { appendMatchEvent, createMatch, getMatch, listMatchEvents } from './procedures/matches.js';
 import { createRefereeLink, joinAsReferee } from './procedures/referee.js';
@@ -21,6 +22,10 @@ const os = implement(contract).$context<ApiContext>();
  * Ingen logik här — procedurerna bor i `src/procedures/`, en fil per domän.
  */
 export const router = os.router({
+  auth: {
+    me: getMe,
+    logout,
+  },
   listTeams,
   createTeam,
   listPlayers,

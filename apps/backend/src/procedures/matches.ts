@@ -9,6 +9,9 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { ORPCError, implement } from '@orpc/server';
 import type { ServerResponse } from 'node:http';
 import type { Kysely } from 'kysely';
+import { requireUser } from '../auth/require-user.js';
+import type { AuthUser } from '../auth/session.js';
+import type { AuthEnv } from '../env.js';
 import { toMatch, type Database, type JsonObject } from '../db/types.js';
 import type { MatchEventBroadcast } from '../match-event-broadcast.js';
 import { readMatchEventsSince } from '../match-events.js';
@@ -28,6 +31,11 @@ export interface ApiContext {
   /** Klartexttoken från den HttpOnly-cookie som #16 utfärdar. */
   readonly participantToken: string | undefined;
   readonly eventBroadcast: MatchEventBroadcast;
+  /** Den inloggade tränaren, löst från sessionscookien en gång per request. */
+  readonly user: AuthUser | null;
+  /** Klartexttoken från sessionscookien — behövs bara för utloggningen. */
+  readonly sessionToken: string | undefined;
+  readonly auth: AuthEnv;
 }
 
 const os = implement(contract).$context<ApiContext>();
@@ -45,6 +53,7 @@ function setParticipantCookie(response: ServerResponse, token: string): void {
 
 /** Skapar ett spelbart matchstartpaket utan ett mellanläge som kan bli halvskrivet. */
 export const createMatch = os.matches.create.handler(async ({ input, context }) => {
+  const user = requireUser(context);
   const formation = FORMATIONS.find((candidate) => candidate.id === input.formationId);
   if (formation === undefined || formation.format !== input.format) {
     throw new ORPCError('BAD_REQUEST', { message: 'Formationen passar inte vald spelform' });
@@ -86,6 +95,7 @@ export const createMatch = os.matches.create.handler(async ({ input, context }) 
       .selectFrom('teams')
       .select('id')
       .where('id', '=', input.teamId)
+      .where('owner_user_id', '=', user.id)
       .executeTakeFirst();
     if (team === undefined) throw new ORPCError('NOT_FOUND', { message: 'Laget finns inte' });
 

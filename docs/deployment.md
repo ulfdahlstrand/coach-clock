@@ -50,6 +50,19 @@ Justera strängen innan den används: Neon delar ut `?sslmode=require`, men `pg`
 postgresql://USER:PASSWORD@HOST/DBNAME?sslmode=verify-full
 ```
 
+**Google OAuth-klient** — tränarna loggar in med Google (ADR-001). I
+[Google Cloud Console](https://console.cloud.google.com/apis/credentials):
+
+1. Skapa ett projekt och konfigurera **OAuth consent screen** (extern, scopen
+   `openid`, `email` och `profile` räcker).
+2. **Create credentials → OAuth client ID**, typ _Web application_.
+3. Lägg till omdirigerings-URI:n
+   `https://coach-clock-web.onrender.com/api/auth/google/callback` — på
+   **webbens** värd, inte API:ts. Lägg gärna till
+   `http://localhost:5174/api/auth/google/callback` för lokal utveckling via
+   Vite-proxyn (`VITE_API_URL=/api`).
+4. Kopiera klient-id och klienthemlighet.
+
 ### 2. Skapa tjänsterna
 
 I Render-dashboarden: **New → Blueprint**, välj repot `coach-clock`. Render läser
@@ -57,10 +70,14 @@ I Render-dashboarden: **New → Blueprint**, välj repot `coach-clock`. Render l
 
 Fyll i för **coach-clock-api**:
 
-| Variabel       | Värde                                  |
-| -------------- | -------------------------------------- |
-| `DATABASE_URL` | Neon-strängen från steg 1              |
-| `CORS_ORIGIN`  | `https://coach-clock-web.onrender.com` |
+| Variabel               | Värde                                                           |
+| ---------------------- | --------------------------------------------------------------- |
+| `DATABASE_URL`         | Neon-strängen från steg 1                                       |
+| `CORS_ORIGIN`          | `https://coach-clock-web.onrender.com`                          |
+| `GOOGLE_CLIENT_ID`     | Från Google-klienten i steg 1                                   |
+| `GOOGLE_CLIENT_SECRET` | Från Google-klienten i steg 1                                   |
+| `AUTH_CALLBACK_URL`    | `https://coach-clock-web.onrender.com/api/auth/google/callback` |
+| `FRONTEND_URL`         | `https://coach-clock-web.onrender.com`                          |
 
 Värdnamnet är inte känt förrän webbtjänsten har deployat — gissa namnet och
 rätta det i steg 3 om Render la på ett suffix. `VITE_API_URL` behöver inget av
@@ -70,15 +87,18 @@ dig: `render.yaml` låser den till `/api`.
 
 När båda tjänsterna är live, notera deras faktiska URL:er och:
 
-1. Kontrollera att `CORS_ORIGIN` på **coach-clock-api** matchar webb-URL:en exakt
-   — protokoll och värd, inget avslutande snedstreck.
+1. Kontrollera att `CORS_ORIGIN` och `FRONTEND_URL` på **coach-clock-api**
+   matchar webb-URL:en exakt — protokoll och värd, inget avslutande snedstreck —
+   och att `AUTH_CALLBACK_URL` är samma värd plus `/api/auth/google/callback`,
+   precis som i Google-klienten.
 2. Om Render la ett suffix på **API:ts** värdnamn: rätta destinationen i
    `/api/*`-rewriten i `render.yaml` och pusha. Den är committad, inte en
    miljövariabel.
 
 ### 4. Verifiera
 
-Öppna webb-URL:en, skapa en match, dela koden och gå med från en annan enhet.
+Öppna webb-URL:en, logga in med Google, skapa ett lag och en match, dela koden
+och gå med från en annan enhet — utan att logga in där.
 Hänger första anropet i ungefär en minut är det API:t som vaknar, inte ett fel.
 
 Checklista som faktiskt fångar de fel som bara syns driftsatt:
@@ -142,20 +162,36 @@ DATABASE_URL='postgresql://…' npm run migrate -w apps/backend
 `render.yaml` sätter de här; de listas också här så att det driftsatta
 kontraktet går att läsa på ett ställe.
 
-| Variabel              | Tjänst | Sätts av      | Noteringar                                                                                                                        |
-| --------------------- | ------ | ------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `PORT`                | api    | Render        | Injiceras. Servern föredrar den framför sin default 4002.                                                                         |
-| `NODE_ENV=production` | api    | `render.yaml` | Gör också att ett saknat `DATABASE_URL` stoppar starten i stället för att tyst peka på localhost.                                 |
-| `DATABASE_URL`        | api    | Du            | Neon, `sslmode=verify-full`.                                                                                                      |
-| `CORS_ORIGIN`         | api    | Du            | Webb-URL:en. Appens egna anrop är same-origin och behöver den inte — den finns för att listan inte ska stå kvar på dev-defaulten. |
-| `VITE_API_URL=/api`   | web    | `render.yaml` | Byggtid. Relativ, så den löses mot sidans eget origin.                                                                            |
+| Variabel               | Tjänst | Sätts av      | Noteringar                                                                                                                        |
+| ---------------------- | ------ | ------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `PORT`                 | api    | Render        | Injiceras. Servern föredrar den framför sin default 4002.                                                                         |
+| `NODE_ENV=production`  | api    | `render.yaml` | Gör också att ett saknat `DATABASE_URL` stoppar starten i stället för att tyst peka på localhost.                                 |
+| `DATABASE_URL`         | api    | Du            | Neon, `sslmode=verify-full`.                                                                                                      |
+| `CORS_ORIGIN`          | api    | Du            | Webb-URL:en. Appens egna anrop är same-origin och behöver den inte — den finns för att listan inte ska stå kvar på dev-defaulten. |
+| `GOOGLE_CLIENT_ID`     | api    | Du            | Google OAuth-klienten. Saknas den i produktion startar inte API:t.                                                                |
+| `GOOGLE_CLIENT_SECRET` | api    | Du            | Hemlig. Committas aldrig.                                                                                                         |
+| `AUTH_CALLBACK_URL`    | api    | Du            | På webbens origin: `…/api/auth/google/callback`. Måste stå i Google-klienten.                                                     |
+| `FRONTEND_URL`         | api    | Du            | Webb-URL:en. Dit tränaren skickas efter inloggningen.                                                                             |
+| `VITE_API_URL=/api`    | web    | `render.yaml` | Byggtid. Relativ, så den löses mot sidans eget origin.                                                                            |
+
+## Lag från före inloggningen
+
+Lag skapade innan inloggningen fanns har ingen ägare och syns inte för någon.
+Logga in en gång, så att kontot finns, och tilldela dem sedan i Neons SQL-editor:
+
+```sql
+update teams
+set owner_user_id = (select id from users where email = 'din@adress.se')
+where owner_user_id is null;
+```
 
 ## Varför API:t proxas
 
 De två tjänsterna är skilda värdar, och `onrender.com` ligger på Public Suffix
 List, så webbläsare behandlar subdomänerna som olika **sajter**. Att prata med
-`coach-clock-api` direkt skulle göra deltagarcookien
-(`coach_clock_participant`, `HttpOnly; SameSite=Lax`) tredjeparts, och iOS —
+`coach-clock-api` direkt skulle göra deltagar- och sessionscookien
+(`coach_clock_participant` och `coach_clock_session`, båda `HttpOnly; SameSite=Lax`)
+tredjeparts, och iOS —
 Safari, Chrome och Firefox, alla kör på WebKit där — blockerar
 tredjepartscookies rakt av, liksom Firefox på desktop. Felet är elakt: man går
 med i matchen, det ser lyckat ut, och sedan är varje anrop anonymt. Desktop-Chrome

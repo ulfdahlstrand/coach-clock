@@ -13,6 +13,7 @@ import {
 } from '@coach-clock/contracts';
 import { Button } from '@/components/ui/button';
 import { apiClient } from '@/lib/api-client';
+import { requireSignedIn } from '@/lib/auth';
 import {
   type CreateMatchFormValues,
   createMatchResolver,
@@ -404,4 +405,8 @@ function MatchSetupPage() {
   );
 }
 
-export const Route = createFileRoute('/matches/new')({ component: MatchSetupPage });
+export const Route = createFileRoute('/matches/new')({
+  // Tränarens sida: kräver inloggning (ADR-001).
+  beforeLoad: ({ location }) => requireSignedIn(location),
+  component: MatchSetupPage,
+});

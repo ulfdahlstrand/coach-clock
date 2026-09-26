@@ -6,5 +6,10 @@
     "outDir": "dist"
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["src/**/*.test.ts", "src/integration-setup.ts", "src/test-database.ts"]
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.dev.ts",
+    "src/integration-setup.ts",
+    "src/test-database.ts"
+  ]
 }

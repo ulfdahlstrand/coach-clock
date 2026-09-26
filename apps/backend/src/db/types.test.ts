@@ -18,6 +18,7 @@ const createdAt = new Date('2026-09-20T10:00:00.000Z');
 const teamRow: Selectable<TeamTable> = {
   id: 'team-1',
   name: 'P13 Blå',
+  owner_user_id: 'user-1',
   created_at: createdAt,
 };
 
