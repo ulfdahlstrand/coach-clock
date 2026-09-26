@@ -15,7 +15,11 @@
   "start": {
     "heading": "Matchklockan är redo",
     "body": "Skalet står. Matchvy, trupp och händelser kommer i kommande steg.",
-    "cta": "Läs om appen"
+    "cta": "Läs om appen",
+    "activeMatches": "Pågående matcher",
+    "activeMatchesError": "Kunde inte hämta dina pågående matcher.",
+    "activeMatch": "{{team}} mot {{opponent}}",
+    "continueMatch": "Fortsätt"
   },
   "about": {
     "heading": "Om appen",

@@ -7,6 +7,7 @@ import { requireUser } from '../auth/require-user.js';
 import type { AuthUser } from '../auth/session.js';
 import type { Database } from '../db/types.js';
 import type { JoinRateLimiter } from '../rate-limit.js';
+import { resolveMatchActor } from './match-access.js';
 
 const os = implement(contract).$context<SharingContext>();
 const CROCKFORD_BASE32 = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -161,21 +162,22 @@ export const joinMatch = os.matches.join.handler(async ({ input, context }) => {
 });
 
 /**
- * Deltagarlistan är avsiktligt knuten till deltagarens HttpOnly-cookie. Det
- * räcker alltså inte att känna till ett match-id för att se vilka som är med.
+ * Deltagarlistan är avsiktligt knuten till deltagarens HttpOnly-cookie — eller
+ * till kontot för tränaren som äger laget. Det räcker alltså inte att känna
+ * till ett match-id för att se vilka som är med.
  * Samtidigt markerar ett aktivt anrop den aktuella enheten som sedd.
  */
 export const listMatchParticipants = os.matches.participants.handler(async ({ input, context }) => {
-  if (context.participantToken === undefined) {
+  if (context.participantToken === undefined && context.user === null) {
     throw new ORPCError('UNAUTHORIZED', { message: 'Gå med i matchen först' });
   }
 
-  const participant = await context.db
-    .selectFrom('participants')
-    .select('id')
-    .where('match_id', '=', input.matchId)
-    .where('token_hash', '=', sha256(context.participantToken))
-    .executeTakeFirst();
+  const participant = await resolveMatchActor(
+    context.db,
+    input.matchId,
+    context.participantToken,
+    context.user,
+  );
   if (participant === undefined) {
     throw new ORPCError('FORBIDDEN', { message: 'Du är inte deltagare i matchen' });
   }

@@ -3,8 +3,10 @@ import { contract } from '@coach-clock/contracts';
 import { ORPCError, implement } from '@orpc/server';
 import type { Kysely } from 'kysely';
 import type { ServerResponse } from 'node:http';
+import type { AuthUser } from '../auth/session.js';
 import type { Database } from '../db/types.js';
 import type { JoinRateLimiter } from '../rate-limit.js';
+import { resolveMatchActor } from './match-access.js';
 
 export interface RefereeContext {
   readonly db: Kysely<Database>;
@@ -13,6 +15,7 @@ export interface RefereeContext {
   readonly joinRateLimiter: JoinRateLimiter;
   readonly response: ServerResponse;
   readonly participantToken: string | undefined;
+  readonly user: AuthUser | null;
 }
 
 const os = implement(contract).$context<RefereeContext>();
@@ -34,15 +37,15 @@ function setParticipantCookie(response: ServerResponse, token: string): void {
 }
 
 async function requireOwner(context: RefereeContext, matchId: string): Promise<void> {
-  if (context.participantToken === undefined) {
+  if (context.participantToken === undefined && context.user === null) {
     throw new ORPCError('UNAUTHORIZED', { message: 'Ägarens deltagarsession krävs' });
   }
-  const participant = await context.db
-    .selectFrom('participants')
-    .select(['id', 'role'])
-    .where('match_id', '=', matchId)
-    .where('token_hash', '=', sha256(context.participantToken))
-    .executeTakeFirst();
+  const participant = await resolveMatchActor(
+    context.db,
+    matchId,
+    context.participantToken,
+    context.user,
+  );
   if (participant === undefined || participant.role !== 'owner') {
     throw new ORPCError('FORBIDDEN', { message: 'Bara matchägaren kan skapa en domarlänk' });
   }
