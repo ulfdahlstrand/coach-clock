@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as LagRouteImport } from './routes/lag'
+import { Route as LoggaInRouteImport } from './routes/logga-in'
 import { Route as OmRouteImport } from './routes/om'
 import { Route as DebuggServerklockaRouteImport } from './routes/debugg.serverklocka'
 import { Route as DomareTokenRouteImport } from './routes/domare_.$token'
@@ -30,6 +31,11 @@ const IndexRoute = IndexRouteImport.update({
 const LagRoute = LagRouteImport.update({
   id: '/lag',
   path: '/lag',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoggaInRoute = LoggaInRouteImport.update({
+  id: '/logga-in',
+  path: '/logga-in',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OmRoute = OmRouteImport.update({
@@ -86,6 +92,7 @@ const MatchesMatchIdSummaryRoute = MatchesMatchIdSummaryRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/lag': typeof LagRoute
+  '/logga-in': typeof LoggaInRoute
   '/om': typeof OmRoute
   '/debugg/serverklocka': typeof DebuggServerklockaRoute
   '/domare/$token': typeof DomareTokenRoute
@@ -100,6 +107,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/lag': typeof LagRoute
+  '/logga-in': typeof LoggaInRoute
   '/om': typeof OmRoute
   '/debugg/serverklocka': typeof DebuggServerklockaRoute
   '/domare/$token': typeof DomareTokenRoute
@@ -115,6 +123,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/lag': typeof LagRoute
+  '/logga-in': typeof LoggaInRoute
   '/om': typeof OmRoute
   '/debugg/serverklocka': typeof DebuggServerklockaRoute
   '/domare_/$token': typeof DomareTokenRoute
@@ -131,6 +140,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/lag'
+    | '/logga-in'
     | '/om'
     | '/debugg/serverklocka'
     | '/domare/$token'
@@ -145,6 +155,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/lag'
+    | '/logga-in'
     | '/om'
     | '/debugg/serverklocka'
     | '/domare/$token'
@@ -159,6 +170,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/lag'
+    | '/logga-in'
     | '/om'
     | '/debugg/serverklocka'
     | '/domare_/$token'
@@ -174,6 +186,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LagRoute: typeof LagRoute
+  LoggaInRoute: typeof LoggaInRoute
   OmRoute: typeof OmRoute
   DebuggServerklockaRoute: typeof DebuggServerklockaRoute
   DomareTokenRoute: typeof DomareTokenRoute
@@ -198,6 +211,13 @@ declare module '@tanstack/react-router' {
       path: '/lag'
       fullPath: '/lag'
       preLoaderRoute: typeof LagRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/logga-in': {
+      id: '/logga-in'
+      path: '/logga-in'
+      fullPath: '/logga-in'
+      preLoaderRoute: typeof LoggaInRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/om': {
@@ -290,6 +310,7 @@ const MatchesMatchIdRouteWithChildren = MatchesMatchIdRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LagRoute: LagRoute,
+  LoggaInRoute: LoggaInRoute,
   OmRoute: OmRoute,
   DebuggServerklockaRoute: DebuggServerklockaRoute,
   DomareTokenRoute: DomareTokenRoute,

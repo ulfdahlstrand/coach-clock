@@ -7,7 +7,10 @@
     "start": "Start",
     "teams": "Lag",
     "about": "Om appen",
-    "debug": "Debugg"
+    "debug": "Debugg",
+    "signIn": "Logga in",
+    "signOut": "Logga ut",
+    "signedInAs": "Inloggad som {{name}}"
   },
   "start": {
     "heading": "Matchklockan är redo",
@@ -65,5 +68,16 @@
   "error": {
     "notFound": "Sidan finns inte",
     "notFoundBody": "Adressen leder ingenstans. Gå tillbaka till start."
+  },
+  "login": {
+    "eyebrow": "Tränare",
+    "heading": "Logga in",
+    "body": "Logga in för att lägga upp lag och starta matcher. Dina lag syns bara för dig.",
+    "google": "Logga in med Google",
+    "dev": "Logga in som dev-tränare",
+    "failed": "Inloggningen misslyckades. Försök igen.",
+    "unavailable": "Inloggningen är inte tillgänglig just nu.",
+    "offline": "Kunde inte nå servern. Du behöver täckning för att logga in.",
+    "noAccountNeeded": "Domare och föräldrar behöver inget konto — de går med via länken eller koden du delar."
   }
 }

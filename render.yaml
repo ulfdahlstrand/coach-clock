@@ -73,3 +73,16 @@ services:
       # den riktiga frontenden i stället för dev-defaulten localhost:5174.
       - key: CORS_ORIGIN
         sync: false
+      # Tränarinloggningen (docs/tech-decisions.md, ADR-001). Utan de här stoppar
+      # API:t vid start i produktion. Callbacken ska ligga på webbens origin —
+      # https://coach-clock-web.onrender.com/api/auth/google/callback — eftersom
+      # det är svaret som sätter sessionscookien.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: AUTH_CALLBACK_URL
+        sync: false
+      # Webb-URL:en; dit tränaren skickas efter inloggningen.
+      - key: FRONTEND_URL
+        sync: false

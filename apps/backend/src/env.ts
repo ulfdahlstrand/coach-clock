@@ -9,6 +9,26 @@ export interface Env {
   readonly corsOrigins: readonly string[];
   /** Anslutningssträng till Postgres. */
   readonly databaseUrl: string;
+  /** Tränarinloggningen (ADR-001). */
+  readonly auth: AuthEnv;
+}
+
+export interface GoogleAuthConfig {
+  readonly clientId: string;
+  readonly clientSecret: string;
+  /** Måste ligga på webbens origin (`…/api/auth/google/callback`) — det är svaret som sätter sessionscookien. */
+  readonly callbackUrl: string;
+}
+
+export interface AuthEnv {
+  /** Null utanför produktion när inget Google-klient-id är satt; inloggningen svarar då 503. */
+  readonly google: GoogleAuthConfig | null;
+  /** Dit webbläsaren skickas efter inloggning. */
+  readonly frontendUrl: string;
+  /** `Secure` på sessionscookien. På som standard i produktion. */
+  readonly cookieSecure: boolean;
+  /** Utvecklingsinloggning utan Google. Kan aldrig slås på i produktion. */
+  readonly devLogin: boolean;
 }
 
 const DEFAULT_PORT = 4002;
@@ -55,10 +75,55 @@ function parseDatabaseUrl(raw: string | undefined, nodeEnv: string | undefined):
   return DEFAULT_DEV_DATABASE_URL;
 }
 
+function present(raw: string | undefined): string | undefined {
+  const value = raw?.trim();
+  return value === undefined || value === '' ? undefined : value;
+}
+
+function parseGoogle(source: NodeJS.ProcessEnv): GoogleAuthConfig | null {
+  const clientId = present(source['GOOGLE_CLIENT_ID']);
+  const clientSecret = present(source['GOOGLE_CLIENT_SECRET']);
+  const callbackUrl = present(source['AUTH_CALLBACK_URL']);
+
+  if (clientId !== undefined && clientSecret !== undefined && callbackUrl !== undefined) {
+    return { clientId, clientSecret, callbackUrl };
+  }
+
+  // Utan Google kan ingen tränare logga in, och då går inga lag att nå. I
+  // produktion är det ett konfigurationsfel som ska stoppa starten, inte en
+  // app som ser ut att fungera tills någon trycker på "Logga in".
+  if (source['NODE_ENV'] === 'production') {
+    throw new Error(
+      'GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET och AUTH_CALLBACK_URL måste sättas i produktion',
+    );
+  }
+
+  return null;
+}
+
+function parseAuth(source: NodeJS.ProcessEnv): AuthEnv {
+  const production = source['NODE_ENV'] === 'production';
+  const frontendUrl = present(source['FRONTEND_URL']);
+
+  if (frontendUrl === undefined && production) {
+    throw new Error('FRONTEND_URL måste sättas i produktion');
+  }
+
+  const cookieSecure = present(source['COOKIE_SECURE']);
+
+  return {
+    google: parseGoogle(source),
+    frontendUrl: new URL(frontendUrl ?? DEFAULT_CORS_ORIGIN).origin,
+    cookieSecure: cookieSecure === undefined ? production : cookieSecure === 'true',
+    devLogin: !production && source['ENABLE_DEV_LOGIN'] === 'true',
+  };
+}
+
 export function readEnv(source: NodeJS.ProcessEnv = process.env): Env {
   return {
     port: parsePort(source['PORT']),
     corsOrigins: parseCorsOrigins(source['CORS_ORIGIN']),
     databaseUrl: parseDatabaseUrl(source['DATABASE_URL'], source['NODE_ENV']),
+    auth: parseAuth(source),
   };
 }

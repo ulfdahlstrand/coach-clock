@@ -32,7 +32,14 @@ self.addEventListener('message', (event) => {
 // A direct /matches/:id navigation must receive the cached shell when the
 // device is offline. API fetches are not navigation requests and never reach
 // this route; their truth lives in the event log/outbox, not Cache Storage.
-registerRoute(new NavigationRoute(createHandlerBoundToURL('/index.html')));
+//
+// /api/* is the exception: signing in navigates the whole page to
+// /api/auth/google, and the redirect back from Google lands on
+// /api/auth/google/callback. Both must reach the network — answered with the
+// cached shell, sign-in would silently never happen.
+registerRoute(
+  new NavigationRoute(createHandlerBoundToURL('/index.html'), { denylist: [/^\/api\//] }),
+);
 
 // Only same-origin browser assets are revalidated. Fetch/XHR requests (the
 // API, SSE and event writes) have an empty destination and are deliberately

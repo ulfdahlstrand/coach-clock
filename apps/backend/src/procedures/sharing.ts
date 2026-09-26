@@ -3,6 +3,8 @@ import { contract } from '@coach-clock/contracts';
 import { ORPCError, implement } from '@orpc/server';
 import type { Kysely } from 'kysely';
 import type { ServerResponse } from 'node:http';
+import { requireUser } from '../auth/require-user.js';
+import type { AuthUser } from '../auth/session.js';
 import type { Database } from '../db/types.js';
 import type { JoinRateLimiter } from '../rate-limit.js';
 
@@ -18,6 +20,7 @@ export interface SharingContext {
   readonly joinRateLimiter: JoinRateLimiter;
   readonly response: ServerResponse;
   readonly participantToken: string | undefined;
+  readonly user: AuthUser | null;
 }
 
 function sha256(value: string): string {
@@ -59,13 +62,20 @@ function setParticipantCookie(response: ServerResponse, token: string): void {
   );
 }
 
+/**
+ * Bara tränaren som äger matchens lag kan dela den. En annans match svarar som
+ * en match som inte finns.
+ */
 export const createMatchShare = os.matches.share.handler(async ({ input, context }) => {
+  const user = requireUser(context);
   return context.db.transaction().execute(async (trx) => {
     const match = await trx
       .selectFrom('matches')
-      .select(['id', 'status', 'join_code'])
-      .where('id', '=', input.matchId)
-      .forUpdate()
+      .innerJoin('teams', 'teams.id', 'matches.team_id')
+      .select(['matches.id', 'matches.status', 'matches.join_code'])
+      .where('matches.id', '=', input.matchId)
+      .where('teams.owner_user_id', '=', user.id)
+      .forUpdate('matches')
       .executeTakeFirst();
 
     if (match === undefined) {

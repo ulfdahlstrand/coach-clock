@@ -5,6 +5,7 @@ import { toDataURL } from 'qrcode';
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { apiClient } from '@/lib/api-client';
+import { requireSignedIn } from '@/lib/auth';
 import { formatJoinCode, lastSeenLabel, roleLabel } from '@/lib/sharing';
 
 type ShareDetails = { joinCode: string; linkToken: string };
@@ -258,4 +259,8 @@ function MatchSharePage() {
   );
 }
 
-export const Route = createFileRoute('/matches_/$matchId/share')({ component: MatchSharePage });
+export const Route = createFileRoute('/matches_/$matchId/share')({
+  // Tränarens sida: kräver inloggning (ADR-001).
+  beforeLoad: ({ location }) => requireSignedIn(location),
+  component: MatchSharePage,
+});

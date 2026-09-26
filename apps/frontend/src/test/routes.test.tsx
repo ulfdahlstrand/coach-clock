@@ -1,12 +1,27 @@
 import { RouterProvider, createMemoryHistory, createRouter } from '@tanstack/react-router';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { expect, test } from 'vitest';
+import type { AuthUser } from '@coach-clock/contracts';
 import '@/i18n';
+import { meQueryKey } from '@/lib/auth';
+import { queryClient } from '@/lib/query-client';
 import { routeTree } from '@/route-tree.gen';
 
-/** Monterar det genererade route-trädet på en given adress, utan webbläsarhistorik. */
-async function renderAt(path: string) {
+const coach: AuthUser = {
+  id: '00000000-0000-4000-8000-0000000000aa',
+  name: 'Ulf',
+  email: 'ulf@example.se',
+  imageUrl: null,
+};
+
+/**
+ * Monterar det genererade route-trädet på en given adress, utan webbläsarhistorik.
+ * Som inloggad tränare om inget annat sägs — vakterna frågar annars servern.
+ */
+async function renderAt(path: string, user: AuthUser | null = coach) {
   cleanup();
+  queryClient.clear();
+  queryClient.setQueryData(meQueryKey, { user });
   const router = createRouter({
     routeTree,
     history: createMemoryHistory({ initialEntries: [path] }),
@@ -26,6 +41,35 @@ test('/om renderas från route-trädet', async () => {
   await renderAt('/om');
 
   expect(screen.getByRole('heading').textContent).toBe('Om appen');
+});
+
+test('tränarens sidor skickar en utloggad besökare till inloggningen', async () => {
+  for (const path of ['/lag', '/matches/new', '/lag/00000000-0000-4000-8000-000000000001']) {
+    await renderAt(path, null);
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Logga in');
+    const google = screen.getByRole('link', { name: 'Logga in med Google' });
+    expect(new URL(google.getAttribute('href') ?? '').searchParams.get('returnTo')).toBe(path);
+  }
+});
+
+test('domarens och åskådarens vyer kräver ingen inloggning', async () => {
+  await renderAt('/titta/K7M2QX', null);
+  expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Följ från sidlinjen');
+});
+
+test('/logga-in visar ett begripligt fel efter en misslyckad inloggning', async () => {
+  await renderAt('/logga-in?error=failed', null);
+  expect(screen.getByRole('alert').textContent).toBe('Inloggningen misslyckades. Försök igen.');
+});
+
+test('huvudet visar inloggning eller utloggning', async () => {
+  await renderAt('/', null);
+  expect(screen.getAllByRole('link', { name: 'Logga in' }).length).toBeGreaterThan(0);
+
+  await renderAt('/');
+  expect(screen.getByRole('button', { name: 'Logga ut' }).getAttribute('title')).toBe(
+    'Inloggad som Ulf',
+  );
 });
 
 test('/lag och truppvyn finns i route-trädet', async () => {

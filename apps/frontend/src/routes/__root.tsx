@@ -3,6 +3,7 @@ import { Link, Outlet, createRootRoute } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { queryClient } from '@/lib/query-client';
 import { useIsPhone } from '@/lib/use-is-phone';
+import { AccountControl } from '@/components/account-control';
 import { InstallPrompt } from '@/components/install-prompt';
 import { ServiceWorkerUpdate } from '@/components/service-worker-update';
 
@@ -31,6 +32,11 @@ function Navigation({ phone }: NavigationProps) {
           {label}
         </Link>
       ))}
+      {phone ? null : (
+        <div className="ml-auto">
+          <AccountControl />
+        </div>
+      )}
     </nav>
   );
 }
@@ -43,7 +49,10 @@ function RootLayout() {
       <div className="app-shell">
         <header className="app-shell-top">
           {phone ? (
-            <span className="app-shell-brand">COACH CLOCK</span>
+            <>
+              <span className="app-shell-brand">COACH CLOCK</span>
+              <AccountControl />
+            </>
           ) : (
             <Navigation phone={false} />
           )}

@@ -5,6 +5,7 @@ import type { SequencedMatchEvent } from '@coach-clock/contracts';
 import { NO_MIGRATIONS } from 'kysely/migration';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { SESSION_COOKIE, createSession } from './auth/session.js';
 import { createDb } from './db/client.js';
 import { createMigrator, migrateToLatest } from './db/migrator.js';
 import { readEnv } from './env.js';
@@ -35,6 +36,18 @@ const limitedServer = createApiServer(env, {
 let baseUrl: string;
 let limitedBaseUrl: string;
 let nextId = 0;
+/** Tränaren som äger lagen nedan, och sessionscookien hen skickar med. */
+let coach: { id: string; cookie: string };
+
+async function signIn(email: string): Promise<{ id: string; cookie: string }> {
+  const user = await db
+    .insertInto('users')
+    .values({ email, name: email, image_url: null })
+    .returning('id')
+    .executeTakeFirstOrThrow();
+  const { token } = await createSession(db, user.id, serverNow);
+  return { id: user.id, cookie: `${SESSION_COOKIE}=${token}` };
+}
 
 function uuid(): string {
   nextId += 1;
@@ -56,7 +69,7 @@ async function close(serverToClose: Server): Promise<void> {
 async function createMatch(): Promise<string> {
   const team = await db
     .insertInto('teams')
-    .values({ name: 'P13 Blå' })
+    .values({ name: 'P13 Blå', owner_user_id: coach.id })
     .returning('id')
     .executeTakeFirstOrThrow();
   const match = await db
@@ -131,12 +144,23 @@ async function post(url: string, body: unknown, token?: string): Promise<Respons
   });
 }
 
-async function postTo(url: string, path: string, body: unknown, token?: string): Promise<Response> {
+async function postTo(
+  url: string,
+  path: string,
+  body: unknown,
+  token?: string,
+  /** null = utloggad. */
+  session: string | null = coach.cookie,
+): Promise<Response> {
+  const cookies = [
+    ...(token === undefined ? [] : [`coach_clock_participant=${token}`]),
+    ...(session === null ? [] : [session]),
+  ];
   return fetch(`${url}${path}`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      ...(token === undefined ? {} : { cookie: `coach_clock_participant=${token}` }),
+      ...(cookies.length === 0 ? {} : { cookie: cookies.join('; ') }),
     },
     body: JSON.stringify(body),
   });
@@ -223,6 +247,7 @@ beforeAll(async () => {
   await createMigrator(db).migrateTo(NO_MIGRATIONS);
   const migrations = await migrateToLatest(db);
   expect(migrations.error).toBeUndefined();
+  coach = await signIn('ulf@example.se');
   [baseUrl, limitedBaseUrl] = await Promise.all([listen(server), listen(limitedServer)]);
 });
 
@@ -230,7 +255,7 @@ describe('POST /matches', () => {
   it('skapar ägarsession och en komplett matchlogg som väntar på avspark', async () => {
     const team = await db
       .insertInto('teams')
-      .values({ name: 'F11 Blå' })
+      .values({ name: 'F11 Blå', owner_user_id: coach.id })
       .returning('id')
       .executeTakeFirstOrThrow();
     const roster = await Promise.all(
@@ -554,6 +579,89 @@ describe('GET /matches', () => {
 
     expect(missing.status).toBe(404);
     expect(invalid.status).toBe(400);
+  });
+});
+
+describe('tränarens ägarskap', () => {
+  it('kräver inloggning för att skapa en match', async () => {
+    const response = await postTo(
+      baseUrl,
+      '/matches',
+      {
+        teamId: uuid(),
+        opponent: 'Grön IF',
+        format: 7,
+        formationId: '7v7-2-3-1',
+        periodCount: 3,
+        periodLengthSeconds: 900,
+        presentPlayerIds: [uuid()],
+        assignments: [{ slotId: 'gk', playerId: uuid() }],
+      },
+      undefined,
+      null,
+    );
+    expect(response.status).toBe(401);
+  });
+
+  it('låter inte en annan tränare starta en match för laget', async () => {
+    const team = await db
+      .insertInto('teams')
+      .values({ name: 'F11 Blå', owner_user_id: coach.id })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    const roster = await Promise.all(
+      Array.from({ length: 7 }, (_, index) =>
+        db
+          .insertInto('players')
+          .values({ team_id: team.id, name: `Spelare ${index + 1}` })
+          .returning('id')
+          .executeTakeFirstOrThrow(),
+      ),
+    );
+    const formation = ['gk', 'cb-left', 'cb-right', 'lm', 'cm', 'rm', 'st'];
+    const other = await signIn(`annan-${uuid()}@example.se`);
+
+    const response = await postTo(
+      baseUrl,
+      '/matches',
+      {
+        teamId: team.id,
+        opponent: 'Grön IF',
+        format: 7,
+        formationId: '7v7-2-3-1',
+        periodCount: 3,
+        periodLengthSeconds: 900,
+        presentPlayerIds: roster.map((player) => player.id),
+        assignments: formation.map((slotId, index) => ({ slotId, playerId: roster[index]?.id })),
+      },
+      undefined,
+      other.cookie,
+    );
+
+    expect(response.status).toBe(404);
+    const matches = await db
+      .selectFrom('matches')
+      .select('id')
+      .where('team_id', '=', team.id)
+      .execute();
+    expect(matches).toHaveLength(0);
+  });
+
+  it('låter bara lagets ägare dela en match', async () => {
+    const matchId = await createMatch();
+    const other = await signIn(`annan-${uuid()}@example.se`);
+
+    const anonymous = await postTo(baseUrl, '/matches/share', { matchId }, undefined, null);
+    const stranger = await postTo(baseUrl, '/matches/share', { matchId }, undefined, other.cookie);
+
+    expect(anonymous.status).toBe(401);
+    expect(stranger.status).toBe(404);
+    const match = await db
+      .selectFrom('matches')
+      .select('join_code')
+      .where('id', '=', matchId)
+      .executeTakeFirstOrThrow();
+    expect(match.join_code).toBeNull();
   });
 });
 

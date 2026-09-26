@@ -5,12 +5,25 @@ import { createApiServer } from '../server.js';
 import { createDb, destroyDb } from '../db/client.js';
 import { createMigrator, migrateToLatest, reportMigrationResults } from '../db/migrator.js';
 import { readEnv } from '../env.js';
+import { SESSION_COOKIE, createSession } from '../auth/session.js';
 import { NO_MIGRATIONS } from 'kysely/migration';
 
 const env = readEnv();
 const db = createDb(env.databaseUrl);
 const server = createApiServer({ ...env, port: 0 });
 let baseUrl: string;
+/** Sessionscookien för tränaren som äger lagen i testerna. */
+let cookie: string;
+
+async function signIn(email: string): Promise<string> {
+  const user = await db
+    .insertInto('users')
+    .values({ email, name: email, image_url: null })
+    .returning('id')
+    .executeTakeFirstOrThrow();
+  const { token } = await createSession(db, user.id, new Date());
+  return `${SESSION_COOKIE}=${token}`;
+}
 
 interface TeamResponse {
   id: string;
@@ -27,10 +40,14 @@ interface PlayerResponse {
   archived: boolean;
 }
 
-async function post<T>(path: string, body: unknown): Promise<{ response: Response; body: T }> {
+async function post<T>(
+  path: string,
+  body: unknown,
+  as = cookie,
+): Promise<{ response: Response; body: T }> {
   const response = await fetch(`${baseUrl}${path}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', cookie: as },
     body: JSON.stringify(body),
   });
 
@@ -71,8 +88,10 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await sql`
-    truncate table match_events, participants, matches, players, teams restart identity cascade
+    truncate table match_events, participants, matches, players, teams, sessions, identities, users
+    restart identity cascade
   `.execute(db);
+  cookie = await signIn('ulf@example.se');
 });
 
 afterAll(async () => {
@@ -91,7 +110,7 @@ describe('lag-API', () => {
     expect(first).toMatchObject({ name: 'P13 Blå' });
     expect(first.createdAt).toEqual(expect.any(String));
 
-    const response = await fetch(`${baseUrl}/teams`);
+    const response = await fetch(`${baseUrl}/teams`, { headers: { cookie } });
     const body = (await response.json()) as TeamResponse[];
 
     expect(response.status).toBe(200);
@@ -115,7 +134,7 @@ describe('spelar-API', () => {
       archived: false,
     });
 
-    const response = await fetch(`${baseUrl}/players?teamId=${team.id}`);
+    const response = await fetch(`${baseUrl}/players?teamId=${team.id}`, { headers: { cookie } });
     const body = (await response.json()) as PlayerResponse[];
 
     expect(response.status).toBe(200);
@@ -144,7 +163,7 @@ describe('spelar-API', () => {
       archived: true,
     });
 
-    const listed = await fetch(`${baseUrl}/players?teamId=${team.id}`);
+    const listed = await fetch(`${baseUrl}/players?teamId=${team.id}`, { headers: { cookie } });
     await expect(listed.json()).resolves.toEqual([updated.body]);
   });
 
@@ -226,5 +245,61 @@ describe('spelar-API', () => {
       .where('id', '=', player.id)
       .executeTakeFirstOrThrow();
     expect(stored).toEqual({ name: 'Alva', team_id: team.id });
+  });
+});
+
+describe('ägarskap', () => {
+  it('kräver inloggning för att lista och skapa lag', async () => {
+    expect((await fetch(`${baseUrl}/teams`)).status).toBe(401);
+    const { response } = await post<unknown>('/teams', { name: 'P13 Blå' }, '');
+    expect(response.status).toBe(401);
+    expect(await db.selectFrom('teams').select('id').execute()).toHaveLength(0);
+  });
+
+  it('visar bara tränarens egna lag och knyter nya lag till tränaren', async () => {
+    const mine = await createTeam('Mitt lag');
+    const other = await signIn('annan@example.se');
+    await post<TeamResponse>('/teams', { name: 'Annans lag' }, other);
+
+    const response = await fetch(`${baseUrl}/teams`, { headers: { cookie } });
+    const body = (await response.json()) as TeamResponse[];
+    expect(body.map(({ id }) => id)).toEqual([mine.id]);
+  });
+
+  it('svarar 404 på någon annans lag, som om det inte fanns', async () => {
+    const team = await createTeam();
+    const player = await createPlayer(team.id);
+    const other = await signIn('annan@example.se');
+
+    const listed = await fetch(`${baseUrl}/players?teamId=${team.id}`, {
+      headers: { cookie: other },
+    });
+    const created = await post<unknown>('/players', { teamId: team.id, name: 'Inkräktare' }, other);
+    const updated = await post<unknown>(
+      '/players/update',
+      { teamId: team.id, playerId: player.id, name: 'Kapad' },
+      other,
+    );
+
+    expect([listed.status, created.response.status, updated.response.status]).toEqual([
+      404, 404, 404,
+    ]);
+    const stored = await db.selectFrom('players').select('name').execute();
+    expect(stored).toEqual([{ name: 'Alva' }]);
+  });
+
+  it('gömmer lag från före inloggningen tills de tilldelas en ägare', async () => {
+    await db.insertInto('teams').values({ name: 'Föräldralöst' }).execute();
+
+    const response = await fetch(`${baseUrl}/teams`, { headers: { cookie } });
+    expect(await response.json()).toEqual([]);
+  });
+
+  it('behandlar en utgången session som utloggad', async () => {
+    await db
+      .updateTable('sessions')
+      .set({ expires_at: new Date(Date.now() - 1_000) })
+      .execute();
+    expect((await fetch(`${baseUrl}/teams`, { headers: { cookie } })).status).toBe(401);
   });
 });

@@ -6,6 +6,7 @@ import { contract, createPlayerInputSchema, updatePlayerInputSchema } from './in
 describe('contract', () => {
   it('exponerar lag-, spelar- och append-procedurerna', () => {
     expect(Object.keys(contract)).toEqual([
+      'auth',
       'listTeams',
       'createTeam',
       'listPlayers',
@@ -27,6 +28,11 @@ describe('contract', () => {
     expect(contract.matches.events['~orpc'].route).toMatchObject({
       method: 'POST',
       path: '/matches/events',
+    });
+    expect(contract.auth.me['~orpc'].route).toMatchObject({ method: 'GET', path: '/auth/me' });
+    expect(contract.auth.logout['~orpc'].route).toMatchObject({
+      method: 'POST',
+      path: '/auth/logout',
     });
     expect(contract.matches.refereeLink['~orpc'].route).toMatchObject({
       method: 'POST',

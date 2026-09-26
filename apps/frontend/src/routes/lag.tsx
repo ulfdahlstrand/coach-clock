@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { apiClient } from '@/lib/api-client';
+import { requireSignedIn } from '@/lib/auth';
 import { type CreateTeamFormValues, createTeamResolver } from '@/lib/team-forms';
 
 const teamsQueryKey = ['teams'] as const;
@@ -97,4 +98,8 @@ function TeamsPage() {
   );
 }
 
-export const Route = createFileRoute('/lag')({ component: TeamsPage });
+export const Route = createFileRoute('/lag')({
+  // Tränarens sida: kräver inloggning (ADR-001).
+  beforeLoad: ({ location }) => requireSignedIn(location),
+  component: TeamsPage,
+});

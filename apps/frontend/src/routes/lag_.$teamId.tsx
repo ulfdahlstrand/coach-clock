@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import type { Player } from '@coach-clock/contracts';
 import { Button } from '@/components/ui/button';
 import { apiClient } from '@/lib/api-client';
+import { requireSignedIn } from '@/lib/auth';
 import {
   type CreatePlayerFormValues,
   createPlayerResolver,
@@ -213,4 +214,8 @@ function TeamPage() {
   );
 }
 
-export const Route = createFileRoute('/lag_/$teamId')({ component: TeamPage });
+export const Route = createFileRoute('/lag_/$teamId')({
+  // Tränarens sida: kräver inloggning (ADR-001).
+  beforeLoad: ({ location }) => requireSignedIn(location),
+  component: TeamPage,
+});
