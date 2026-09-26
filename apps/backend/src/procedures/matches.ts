@@ -15,6 +15,7 @@ import type { AuthEnv } from '../env.js';
 import { toMatch, type Database, type JsonObject } from '../db/types.js';
 import type { MatchEventBroadcast } from '../match-event-broadcast.js';
 import { readMatchEventsSince } from '../match-events.js';
+import { resolveMatchActor } from './match-access.js';
 import type { RateLimiter } from '../rate-limit.js';
 import type { JoinRateLimiter } from '../rate-limit.js';
 
@@ -204,6 +205,31 @@ export const getMatch = os.matches.get.handler(async ({ input, context }) => {
   };
 });
 
+/** Bara lag som tränaren äger; äldre lag utan ägare syns inte för någon. */
+export const listActiveMatches = os.matches.listActive.handler(async ({ context }) => {
+  const user = requireUser(context);
+  const rows = await context.db
+    .selectFrom('matches')
+    .innerJoin('teams', 'teams.id', 'matches.team_id')
+    .selectAll('matches')
+    .select('teams.name as team_name')
+    .where('teams.owner_user_id', '=', user.id)
+    .where('matches.status', '=', 'live')
+    .orderBy('matches.created_at', 'desc')
+    .orderBy('matches.id')
+    .execute();
+
+  return rows.map(({ team_name, ...row }) => {
+    const match = toMatch(row);
+    return {
+      ...match,
+      teamName: team_name,
+      createdAt: match.createdAt.toISOString(),
+      endedAt: null,
+    };
+  });
+});
+
 export const listMatchEvents = os.matches.listEvents.handler(async ({ input, context }) => {
   const match = await context.db
     .selectFrom('matches')
@@ -227,16 +253,16 @@ export const appendMatchEvent = os.matches.events.handler(async ({ input, contex
     });
   }
 
-  if (context.participantToken === undefined) {
+  if (context.participantToken === undefined && context.user === null) {
     throw new ORPCError('UNAUTHORIZED', { message: 'En deltagarsession krävs för att skriva' });
   }
 
-  const participant = await context.db
-    .selectFrom('participants')
-    .select(['id', 'role'])
-    .where('match_id', '=', input.matchId)
-    .where('token_hash', '=', hashToken(context.participantToken))
-    .executeTakeFirst();
+  const participant = await resolveMatchActor(
+    context.db,
+    input.matchId,
+    context.participantToken,
+    context.user,
+  );
 
   if (participant === undefined) {
     throw new ORPCError('UNAUTHORIZED', {

@@ -9,7 +9,13 @@ import {
 } from './procedures/teams.js';
 import { getMe, logout } from './procedures/auth.js';
 import type { ApiContext } from './procedures/matches.js';
-import { appendMatchEvent, createMatch, getMatch, listMatchEvents } from './procedures/matches.js';
+import {
+  appendMatchEvent,
+  createMatch,
+  getMatch,
+  listActiveMatches,
+  listMatchEvents,
+} from './procedures/matches.js';
 import { createRefereeLink, joinAsReferee } from './procedures/referee.js';
 import { createMatchShare, joinMatch, listMatchParticipants } from './procedures/sharing.js';
 import { getServerTime } from './procedures/time.js';
@@ -34,6 +40,7 @@ export const router = os.router({
   matches: {
     create: createMatch,
     get: getMatch,
+    listActive: listActiveMatches,
     share: createMatchShare,
     join: joinMatch,
     refereeLink: createRefereeLink,

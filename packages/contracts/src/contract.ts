@@ -93,6 +93,24 @@ export const getMatchContract = oc
   .input(z.object({ matchId: matchIdSchema }))
   .output(matchMetadataSchema);
 
+/**
+ * Tränarens pågående matcher, från alla lag hen äger. Gör att en match kan
+ * fortsättas från en annan inloggad enhet än den som startade den.
+ */
+export const activeMatchSchema = matchMetadataSchema.extend({ teamName: z.string() });
+
+export type ActiveMatch = z.infer<typeof activeMatchSchema>;
+
+export const listActiveMatchesContract = oc
+  .route({
+    method: 'GET',
+    path: '/matches/active',
+    operationId: 'listActiveMatches',
+    summary: 'Lista den inloggade tränarens pågående matcher',
+  })
+  .input(z.object({}))
+  .output(z.array(activeMatchSchema));
+
 const joinCodeSchema = z
   .string()
   .trim()
@@ -291,6 +309,7 @@ export const contract = oc.router({
   matches: {
     create: createMatchContract,
     get: getMatchContract,
+    listActive: listActiveMatchesContract,
     share: createMatchShareContract,
     join: joinMatchContract,
     refereeLink: createRefereeLinkContract,

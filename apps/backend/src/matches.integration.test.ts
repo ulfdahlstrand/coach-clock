@@ -665,6 +665,121 @@ describe('tränarens ägarskap', () => {
   });
 });
 
+describe('fortsätta en match från en annan inloggad enhet', () => {
+  it('låter lagets ägare skriva med bara sessionen, som matchens ägardeltagare', async () => {
+    const matchId = await createMatch();
+    const owner = await createParticipant(matchId, 'owner');
+    const event = periodStarted(matchId);
+
+    const response = await postTo(baseUrl, '/matches/events', event, undefined, coach.cookie);
+
+    expect(response.status).toBe(200);
+    const row = await db
+      .selectFrom('match_events')
+      .select('by_participant_id')
+      .where('event_id', '=', event.eventId)
+      .executeTakeFirstOrThrow();
+    expect(row.by_participant_id).toBe(owner.id);
+  });
+
+  it('låter kontot gå före en tittarcookie på samma enhet', async () => {
+    const matchId = await createMatch();
+    await createParticipant(matchId, 'owner');
+    const viewer = await createParticipant(matchId, 'viewer');
+
+    const response = await postTo(
+      baseUrl,
+      '/matches/events',
+      periodStarted(matchId),
+      viewer.token,
+      coach.cookie,
+    );
+
+    expect(response.status).toBe(200);
+  });
+
+  it('ger ingen skrivrätt till en annan tränares session', async () => {
+    const matchId = await createMatch();
+    await createParticipant(matchId, 'owner');
+    const other = await signIn(`annan-${uuid()}@example.se`);
+
+    const response = await postTo(
+      baseUrl,
+      '/matches/events',
+      periodStarted(matchId),
+      undefined,
+      other.cookie,
+    );
+
+    expect(response.status).toBe(401);
+    expect(
+      await db.selectFrom('match_events').select('id').where('match_id', '=', matchId).execute(),
+    ).toHaveLength(0);
+  });
+
+  it('låter ägarens session skapa domarlänk och se deltagarna', async () => {
+    const matchId = await createMatch();
+    await createParticipant(matchId, 'owner');
+
+    const refereeLink = await postTo(
+      baseUrl,
+      '/matches/referee-link',
+      { matchId },
+      undefined,
+      coach.cookie,
+    );
+    const participants = await fetch(`${baseUrl}/matches/participants?matchId=${matchId}`, {
+      headers: { cookie: coach.cookie },
+    });
+
+    expect(refereeLink.status).toBe(200);
+    expect(participants.status).toBe(200);
+  });
+
+  it('listar bara tränarens egna pågående matcher', async () => {
+    const own = await signIn(`egen-${uuid()}@example.se`);
+    const other = await signIn(`annan-${uuid()}@example.se`);
+    const insertMatch = async (ownerId: string, status: 'live' | 'ended') => {
+      const team = await db
+        .insertInto('teams')
+        .values({ name: `Lag ${uuid()}`, owner_user_id: ownerId })
+        .returning(['id', 'name'])
+        .executeTakeFirstOrThrow();
+      const match = await db
+        .insertInto('matches')
+        .values({
+          team_id: team.id,
+          opponent: 'Grön IF',
+          format: 7,
+          formation_id: '2-3-1',
+          period_count: 2,
+          period_length_seconds: 1500,
+          status,
+        })
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      return { matchId: match.id, teamName: team.name };
+    };
+    const live = await insertMatch(own.id, 'live');
+    await insertMatch(own.id, 'ended');
+    await insertMatch(other.id, 'live');
+
+    const response = await fetch(`${baseUrl}/matches/active`, {
+      headers: { cookie: own.cookie },
+    });
+    const anonymous = await fetch(`${baseUrl}/matches/active`);
+
+    expect(response.status).toBe(200);
+    const output = z
+      .array(z.object({ id: z.string(), teamName: z.string(), status: z.string() }))
+      .parse(await response.json());
+    expect(output).toEqual([
+      expect.objectContaining({ id: live.matchId, teamName: live.teamName, status: 'live' }),
+    ]);
+    expect(anonymous.status).toBe(401);
+  });
+});
+
 describe('POST /matches/share och /matches/join', () => {
   async function createShare(
     url = baseUrl,
@@ -804,7 +919,9 @@ describe('POST /matches/referee-link och /matches/referee-join', () => {
   it('kräver en ägarsession och återkallar föregående domarlänk vid rotation', async () => {
     joinLimiterNow += 10_000;
     const matchId = await createMatch();
-    expect((await postTo(baseUrl, '/matches/referee-link', { matchId })).status).toBe(401);
+    expect(
+      (await postTo(baseUrl, '/matches/referee-link', { matchId }, undefined, null)).status,
+    ).toBe(401);
     const owner = await createParticipant(matchId, 'owner');
     const first = (
       await postTo(baseUrl, '/matches/referee-link', { matchId }, owner.token)
