@@ -136,6 +136,11 @@ export const matchCreatedSchema = event('match_created', {
   idealShiftSeconds: z.int().min(60).max(1200).optional(),
   /** Valfritt av samma skäl som bytestiden; saknas det gäller `time`. */
   positionMode: positionModeSchema.optional(),
+  /**
+   * Bara klocka: appen hjälper inte till med byten, trupp eller uppställning.
+   * Saknas det är det en vanlig match med bytesstöd.
+   */
+  clockOnly: z.boolean().optional(),
 });
 
 /** Truppen sätts (eller sätts om innan avspark). */

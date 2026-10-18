@@ -76,6 +76,8 @@ export type DerivedMatchState = {
   readonly idealShiftMs: number;
   /** Hur bytesförslagen tar hänsyn till positioner, eller `time` för äldre matcher. */
   readonly positionMode: PositionMode;
+  /** Bara klocka ur match_created — då ska inget bytesstöd visas. */
+  readonly clockOnly: boolean;
   readonly players: Readonly<Record<string, DerivedPlayerState>>;
   /** `slotId -> playerId`. */
   readonly currentSlots: Readonly<Record<string, string>>;
@@ -127,6 +129,7 @@ function emptyState(ignored: readonly MatchStateIgnoredEvent[] = []): DerivedMat
     clock: EMPTY_CLOCK,
     idealShiftMs: DEFAULT_IDEAL_SHIFT_SECONDS * 1_000,
     positionMode: 'time',
+    clockOnly: false,
     players: {},
     currentSlots: {},
     bench: [],
@@ -439,6 +442,7 @@ function deriveMatchStateInternal(input: unknown, now: Date): DerivedMatchState 
   let ended = false;
   let idealShiftMs = DEFAULT_IDEAL_SHIFT_SECONDS * 1_000;
   let positionMode: PositionMode = 'time';
+  let clockOnly = false;
   /** Första lagdelen varje spelare ställdes på — hennes bästa. */
   const bestRoles = new Map<string, MatchPlayerRole>();
   /** Matchtid då varje spelare på planen gick in i sitt pågående pass. */
@@ -488,6 +492,7 @@ function deriveMatchStateInternal(input: unknown, now: Date): DerivedMatchState 
           formationId = event.formationId;
           if (event.idealShiftSeconds !== undefined) idealShiftMs = event.idealShiftSeconds * 1_000;
           if (event.positionMode !== undefined) positionMode = event.positionMode;
+          clockOnly = event.clockOnly === true;
         }
         break;
 
@@ -713,6 +718,7 @@ function deriveMatchStateInternal(input: unknown, now: Date): DerivedMatchState 
     clock,
     idealShiftMs,
     positionMode,
+    clockOnly,
     players: playerOutput,
     currentSlots: Object.fromEntries(slots),
     bench: [...bench],

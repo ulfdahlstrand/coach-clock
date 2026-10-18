@@ -33,6 +33,7 @@ const initial: CreateMatchFormValues = {
   periodLengthSeconds: 900,
   idealShiftSeconds: DEFAULT_IDEAL_SHIFT_SECONDS,
   positionMode: 'time',
+  clockOnly: false,
   presentPlayerIds: [],
   assignments: [],
 };
@@ -60,6 +61,7 @@ function MatchSetupPage() {
   const formationId = form.watch('formationId');
   const presentPlayerIds = form.watch('presentPlayerIds');
   const assignments = form.watch('assignments');
+  const clockOnly = form.watch('clockOnly') === true;
   const players = useQuery({
     queryKey: ['players', teamId],
     queryFn: () => apiClient.listPlayers({ teamId }),
@@ -96,6 +98,7 @@ function MatchSetupPage() {
           ? {}
           : { idealShiftSeconds: values.idealShiftSeconds }),
         ...(values.positionMode === undefined ? {} : { positionMode: values.positionMode }),
+        ...(values.clockOnly === undefined ? {} : { clockOnly: values.clockOnly }),
       },
       loadMatchSetupDefaults(nextTeamId),
       touched.current,
@@ -155,7 +158,11 @@ function MatchSetupPage() {
         </Link>
         <p className="text-muted-foreground text-sm">MATCHSTART</p>
         <h1 className="text-3xl font-semibold tracking-tight">Ny match</h1>
-        <p className="text-muted-foreground text-sm">Ställ upp laget, sedan är ni igång.</p>
+        <p className="text-muted-foreground text-sm">
+          {clockOnly
+            ? 'Ställ in perioderna, sedan är ni igång.'
+            : 'Ställ upp laget, sedan är ni igång.'}
+        </p>
       </div>
       <form
         className="space-y-6"
@@ -193,44 +200,64 @@ function MatchSetupPage() {
               </span>
             ) : null}
           </label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="space-y-2">
-              <span className="text-sm font-medium">Format</span>
-              <select
-                aria-label="Format"
-                className="border-input bg-background min-h-touch w-full rounded-lg border px-3"
-                value={format}
-                onChange={(event) => chooseFormat(Number(event.target.value) as MatchFormat)}
-              >
-                {[5, 7, 9, 11].map((value) => (
-                  <option key={value} value={value}>
-                    {value} mot {value}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="space-y-2">
-              <span className="text-sm font-medium">Formation</span>
-              <select
-                aria-label="Formation"
-                className="border-input bg-background min-h-touch w-full rounded-lg border px-3"
-                {...form.register('formationId')}
-                onChange={(event) => {
-                  touch('formationId');
-                  form.setValue('formationId', event.target.value);
-                  const next = FORMATIONS.find((item) => item.id === event.target.value);
-                  if (next !== undefined)
-                    form.setValue('assignments', assignFirstPlayers(next, presentPlayerIds));
-                }}
-              >
-                {formationsFor(format).map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+          <label className="flex min-h-touch items-start gap-3">
+            <input
+              type="checkbox"
+              role="switch"
+              className="mt-0.5 size-5"
+              checked={clockOnly}
+              onChange={(event) => {
+                touch('clockOnly');
+                form.setValue('clockOnly', event.target.checked);
+              }}
+            />
+            <span className="space-y-1">
+              <span className="block text-sm font-medium">Bara klocka</span>
+              <span className="text-muted-foreground block text-xs">
+                Appen tar bara tiden. Ingen trupp, uppställning eller bytesförslag.
+              </span>
+            </span>
+          </label>
+          {clockOnly ? null : (
+            <div className="grid grid-cols-2 gap-3">
+              <label className="space-y-2">
+                <span className="text-sm font-medium">Format</span>
+                <select
+                  aria-label="Format"
+                  className="border-input bg-background min-h-touch w-full rounded-lg border px-3"
+                  value={format}
+                  onChange={(event) => chooseFormat(Number(event.target.value) as MatchFormat)}
+                >
+                  {[5, 7, 9, 11].map((value) => (
+                    <option key={value} value={value}>
+                      {value} mot {value}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-2">
+                <span className="text-sm font-medium">Formation</span>
+                <select
+                  aria-label="Formation"
+                  className="border-input bg-background min-h-touch w-full rounded-lg border px-3"
+                  {...form.register('formationId')}
+                  onChange={(event) => {
+                    touch('formationId');
+                    form.setValue('formationId', event.target.value);
+                    const next = FORMATIONS.find((item) => item.id === event.target.value);
+                    if (next !== undefined)
+                      form.setValue('assignments', assignFirstPlayers(next, presentPlayerIds));
+                  }}
+                >
+                  {formationsFor(format).map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <label className="space-y-2">
               <span className="text-sm font-medium">Perioder</span>
@@ -262,128 +289,143 @@ function MatchSetupPage() {
               />
             </label>
           </div>
-          <label className="block space-y-2">
-            <span className="text-sm font-medium">Bytestid</span>
-            <select
-              aria-label="Bytestid"
-              className="border-input bg-background min-h-touch w-full rounded-lg border px-3"
-              value={form.watch('idealShiftSeconds') ?? DEFAULT_IDEAL_SHIFT_SECONDS}
-              onChange={(event) => {
-                touch('idealShiftSeconds');
-                form.setValue('idealShiftSeconds', Number(event.target.value), {
-                  shouldValidate: true,
-                });
-              }}
-            >
-              {[3, 4, 5, 6].map((minutes) => (
-                <option key={minutes} value={minutes * 60}>
-                  {minutes} minuter
-                </option>
-              ))}
-            </select>
-            <span className="text-muted-foreground block text-xs">
-              Hur länge en spelare är inne innan appen föreslår byte. Du kan alltid byta tidigare.
-            </span>
-          </label>
-          <label className="block space-y-2">
-            <span className="text-sm font-medium">Positioner i bytesförslagen</span>
-            <select
-              aria-label="Positioner i bytesförslagen"
-              className="border-input bg-background min-h-touch w-full rounded-lg border px-3"
-              value={form.watch('positionMode') ?? 'time'}
-              onChange={(event) => {
-                touch('positionMode');
-                form.setValue('positionMode', event.target.value as PositionMode);
-              }}
-            >
-              {POSITION_MODES.map((mode) => (
-                <option key={mode} value={mode}>
-                  {POSITION_MODE_LABELS[mode]}
-                </option>
-              ))}
-            </select>
-            <span className="text-muted-foreground block text-xs">
-              Styr bara var bytet görs. När och vem som går in avgörs av bytestid och speltid.
-            </span>
-          </label>
-        </div>
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Närvarande</h2>
-            <span className="text-muted-foreground text-sm">{presentPlayerIds.length} spelare</span>
-          </div>
-          {players.isPending ? <p role="status">Hämtar trupp…</p> : null}
-          <div className="grid grid-cols-2 gap-2">
-            {activePlayers.map((player) => (
-              <label
-                key={player.id}
-                className="bg-card flex min-h-touch items-center gap-3 rounded-xl border px-3 py-2"
-              >
-                <input
-                  type="checkbox"
-                  className="size-5"
-                  checked={presentPlayerIds.includes(player.id)}
-                  onChange={() => togglePresent(player.id)}
-                />
-                <span className="min-w-0 font-medium">
-                  {player.number !== null ? `${player.number} · ` : ''}
-                  {player.name}
+          {clockOnly ? null : (
+            <>
+              <label className="block space-y-2">
+                <span className="text-sm font-medium">Bytestid</span>
+                <select
+                  aria-label="Bytestid"
+                  className="border-input bg-background min-h-touch w-full rounded-lg border px-3"
+                  value={form.watch('idealShiftSeconds') ?? DEFAULT_IDEAL_SHIFT_SECONDS}
+                  onChange={(event) => {
+                    touch('idealShiftSeconds');
+                    form.setValue('idealShiftSeconds', Number(event.target.value), {
+                      shouldValidate: true,
+                    });
+                  }}
+                >
+                  {[3, 4, 5, 6].map((minutes) => (
+                    <option key={minutes} value={minutes * 60}>
+                      {minutes} minuter
+                    </option>
+                  ))}
+                </select>
+                <span className="text-muted-foreground block text-xs">
+                  Hur länge en spelare är inne innan appen föreslår byte. Du kan alltid byta
+                  tidigare.
                 </span>
-                {player.isGoalkeeper ? (
-                  <span className="text-muted-foreground ml-auto text-xs">MV</span>
-                ) : null}
               </label>
-            ))}
-          </div>
+              <label className="block space-y-2">
+                <span className="text-sm font-medium">Positioner i bytesförslagen</span>
+                <select
+                  aria-label="Positioner i bytesförslagen"
+                  className="border-input bg-background min-h-touch w-full rounded-lg border px-3"
+                  value={form.watch('positionMode') ?? 'time'}
+                  onChange={(event) => {
+                    touch('positionMode');
+                    form.setValue('positionMode', event.target.value as PositionMode);
+                  }}
+                >
+                  {POSITION_MODES.map((mode) => (
+                    <option key={mode} value={mode}>
+                      {POSITION_MODE_LABELS[mode]}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-muted-foreground block text-xs">
+                  Styr bara var bytet görs. När och vem som går in avgörs av bytestid och speltid.
+                </span>
+              </label>
+            </>
+          )}
         </div>
-        {formation !== undefined ? (
-          <div className="bg-card space-y-4 rounded-2xl border p-4">
-            <div>
-              <h2 className="text-lg font-semibold">Startuppställning</h2>
-              <p className="text-muted-foreground text-sm">
-                Välj spelare för varje plats. Övriga hamnar på bänken.
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              {formation.slots.map((slot, index) => (
-                <label key={slot.id} className="space-y-1">
-                  <span className="text-muted-foreground text-xs font-medium">{slot.label}</span>
-                  <select
-                    aria-label={slot.label}
-                    className="border-input bg-background min-h-touch w-full rounded-lg border px-3"
-                    value={assignments[index]?.playerId ?? ''}
-                    onChange={(event) => {
-                      const next = assignFirstPlayers(formation, []);
-                      formation.slots.forEach((_, current) => {
-                        const assignment = assignments[current];
-                        const fallback = next[current];
-                        if (assignment !== undefined && fallback !== undefined)
-                          next[current] = assignment;
-                      });
-                      next[index] = { slotId: slot.id, playerId: event.target.value };
-                      form.setValue('assignments', next, { shouldValidate: true });
-                    }}
+        {clockOnly ? null : (
+          <>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold">Närvarande</h2>
+                <span className="text-muted-foreground text-sm">
+                  {presentPlayerIds.length} spelare
+                </span>
+              </div>
+              {players.isPending ? <p role="status">Hämtar trupp…</p> : null}
+              <div className="grid grid-cols-2 gap-2">
+                {activePlayers.map((player) => (
+                  <label
+                    key={player.id}
+                    className="bg-card flex min-h-touch items-center gap-3 rounded-xl border px-3 py-2"
                   >
-                    {presentPlayerIds.map((id) => {
-                      const player = activePlayers.find((candidate) => candidate.id === id);
-                      return player === undefined ? null : (
-                        <option key={id} value={id}>
-                          {player.name}
-                        </option>
-                      );
-                    })}
-                  </select>
-                </label>
-              ))}
+                    <input
+                      type="checkbox"
+                      className="size-5"
+                      checked={presentPlayerIds.includes(player.id)}
+                      onChange={() => togglePresent(player.id)}
+                    />
+                    <span className="min-w-0 font-medium">
+                      {player.number !== null ? `${player.number} · ` : ''}
+                      {player.name}
+                    </span>
+                    {player.isGoalkeeper ? (
+                      <span className="text-muted-foreground ml-auto text-xs">MV</span>
+                    ) : null}
+                  </label>
+                ))}
+              </div>
             </div>
-          </div>
-        ) : null}
-        {form.formState.errors.assignments ? (
-          <p className="text-destructive text-sm">Fyll alla platser med olika spelare.</p>
-        ) : null}
+            {formation !== undefined ? (
+              <div className="bg-card space-y-4 rounded-2xl border p-4">
+                <div>
+                  <h2 className="text-lg font-semibold">Startuppställning</h2>
+                  <p className="text-muted-foreground text-sm">
+                    Välj spelare för varje plats. Övriga hamnar på bänken.
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  {formation.slots.map((slot, index) => (
+                    <label key={slot.id} className="space-y-1">
+                      <span className="text-muted-foreground text-xs font-medium">
+                        {slot.label}
+                      </span>
+                      <select
+                        aria-label={slot.label}
+                        className="border-input bg-background min-h-touch w-full rounded-lg border px-3"
+                        value={assignments[index]?.playerId ?? ''}
+                        onChange={(event) => {
+                          const next = assignFirstPlayers(formation, []);
+                          formation.slots.forEach((_, current) => {
+                            const assignment = assignments[current];
+                            const fallback = next[current];
+                            if (assignment !== undefined && fallback !== undefined)
+                              next[current] = assignment;
+                          });
+                          next[index] = { slotId: slot.id, playerId: event.target.value };
+                          form.setValue('assignments', next, { shouldValidate: true });
+                        }}
+                      >
+                        {presentPlayerIds.map((id) => {
+                          const player = activePlayers.find((candidate) => candidate.id === id);
+                          return player === undefined ? null : (
+                            <option key={id} value={id}>
+                              {player.name}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {form.formState.errors.assignments ? (
+              <p className="text-destructive text-sm">Fyll alla platser med olika spelare.</p>
+            ) : null}
+          </>
+        )}
         {create.error ? (
           <p role="alert" className="text-destructive text-sm">
-            Kunde inte starta matchen. Kontrollera uppställningen och försök igen.
+            {clockOnly
+              ? 'Kunde inte starta matchen. Försök igen.'
+              : 'Kunde inte starta matchen. Kontrollera uppställningen och försök igen.'}
           </p>
         ) : null}
         {create.data ? (
@@ -395,7 +437,10 @@ function MatchSetupPage() {
           type="submit"
           size="lg"
           className="min-h-touch w-full rounded-xl text-base"
-          disabled={create.isPending || presentPlayerIds.length < (formation?.slots.length ?? 1)}
+          disabled={
+            create.isPending ||
+            (!clockOnly && presentPlayerIds.length < (formation?.slots.length ?? 1))
+          }
         >
           <PlayIcon aria-hidden="true" />
           {create.isPending ? 'Startar…' : 'Starta match'}

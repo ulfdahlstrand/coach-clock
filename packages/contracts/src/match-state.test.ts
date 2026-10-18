@@ -370,3 +370,37 @@ describe('händelser med samma tidsstämpel', () => {
     expect(state.bench).toEqual([ANNA]);
   });
 });
+
+describe('klockmatch', () => {
+  const created = (payload: Record<string, unknown> = {}) =>
+    event('2026-09-20T12:50:00.000Z', {
+      type: 'match_created',
+      format: 7,
+      formationId: '7v7-2-3-1',
+      periods: 2,
+      periodLengthSeconds: 1_500,
+      opponent: 'Grön IF',
+      ...payload,
+    });
+
+  it('läser bara-klocka ur match_created och tickar utan trupp', () => {
+    const state = deriveMatchState(
+      [
+        created({ clockOnly: true }),
+        event('2026-09-20T13:00:00.000Z', { type: 'period_started', periodNumber: 1 }),
+      ],
+      new Date('2026-09-20T13:05:00.000Z'),
+    );
+
+    expect(state.ignored).toEqual([]);
+    expect(state.clockOnly).toBe(true);
+    expect(state.players).toEqual({});
+    expect(state.clock.periodElapsedMs).toBe(5 * 60_000);
+  });
+
+  it('är en vanlig match när fältet saknas', () => {
+    expect(deriveMatchState([created()], new Date('2026-09-20T13:00:00.000Z')).clockOnly).toBe(
+      false,
+    );
+  });
+});

@@ -292,6 +292,56 @@ describe('POST /matches', () => {
     // Klockan startar först när domaren eller tränaren blåser igång (#89).
     expect(events.map((event) => event.type)).toEqual(['match_created', 'squad_set', 'lineup_set']);
   });
+
+  it('skapar en klockmatch utan trupp och uppställning', async () => {
+    const team = await db
+      .insertInto('teams')
+      .values({ name: 'F11 Röd', owner_user_id: coach.id })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    const response = await postTo(baseUrl, '/matches', {
+      teamId: team.id,
+      opponent: 'Grön IF',
+      format: 7,
+      formationId: '7v7-2-3-1',
+      periodCount: 2,
+      periodLengthSeconds: 1200,
+      clockOnly: true,
+      presentPlayerIds: [],
+      assignments: [],
+    });
+    const body = (await response.json()) as { id: string };
+
+    expect(response.status).toBe(200);
+    const events = await db
+      .selectFrom('match_events')
+      .select(['type', 'payload'])
+      .where('match_id', '=', body.id)
+      .orderBy('seq')
+      .execute();
+    expect(events.map((event) => event.type)).toEqual(['match_created']);
+    expect(events[0]?.payload).toMatchObject({ clockOnly: true });
+  });
+
+  it('kräver fortfarande en uppställning för en vanlig match', async () => {
+    const team = await db
+      .insertInto('teams')
+      .values({ name: 'F11 Gul', owner_user_id: coach.id })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    const response = await postTo(baseUrl, '/matches', {
+      teamId: team.id,
+      opponent: 'Grön IF',
+      format: 7,
+      formationId: '7v7-2-3-1',
+      periodCount: 2,
+      periodLengthSeconds: 1200,
+      presentPlayerIds: [],
+      assignments: [],
+    });
+
+    expect(response.status).toBe(400);
+  });
 });
 
 afterAll(async () => {
