@@ -25,6 +25,12 @@ services:
       # eget origin. Bakas in i bundlen vid byggtid.
       - key: VITE_API_URL
         value: /api
+    headers:
+      # Renders CDN känner inte igen .webmanifest och skickar binary/octet-stream.
+      # Webbläsarna ska läsa PWA-manifestet som JSON.
+      - path: /manifest.webmanifest
+        name: Content-Type
+        value: application/manifest+json
     routes:
       # Lägger API:t på samma origin som appen. Deltagarcookien
       # (coach_clock_participant) är SameSite=Lax — anropar webbläsaren
