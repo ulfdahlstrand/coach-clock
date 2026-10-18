@@ -5,7 +5,14 @@ import { z } from 'zod';
 /** Matchstartens formulär delar exakt samma validering som API:t. */
 export const createMatchFormSchema = createMatchInputSchema;
 export type CreateMatchFormValues = z.infer<typeof createMatchFormSchema>;
-export const createMatchResolver = zodResolver(createMatchFormSchema);
+const validateCreateMatch = zodResolver(createMatchFormSchema);
+
+/**
+ * Valideras som det skickas: en klockmatch utan trupp och uppställning. Annars
+ * skulle de dolda, automatiskt ifyllda platserna kunna stoppa matchstarten.
+ */
+export const createMatchResolver: typeof validateCreateMatch = (values, context, options) =>
+  validateCreateMatch(toCreateMatchInput(values), context, options);
 
 export type MatchSetupDefaults = Pick<
   CreateMatchFormValues,
@@ -15,6 +22,7 @@ export type MatchSetupDefaults = Pick<
   | 'periodLengthSeconds'
   | 'idealShiftSeconds'
   | 'positionMode'
+  | 'clockOnly'
 >;
 
 const defaultPrefix = 'coach-clock.match-setup.';
@@ -30,6 +38,7 @@ export function loadMatchSetupDefaults(teamId: string): MatchSetupDefaults | und
         periodLengthSeconds: true,
         idealShiftSeconds: true,
         positionMode: true,
+        clockOnly: true,
       })
       .safeParse(saved);
     return parsed.success ? parsed.data : undefined;
@@ -73,7 +82,16 @@ export function applyTeamDefaults(
       ? {}
       : { idealShiftSeconds: pick('idealShiftSeconds') }),
     ...(pick('positionMode') === undefined ? {} : { positionMode: pick('positionMode') }),
+    ...(pick('clockOnly') === undefined ? {} : { clockOnly: pick('clockOnly') }),
   };
+}
+
+/**
+ * En klockmatch skickar varken trupp eller uppställning. Formuläret fyller
+ * dem automatiskt i bakgrunden, så de töms här i stället för i varje fält.
+ */
+export function toCreateMatchInput(values: CreateMatchFormValues): CreateMatchFormValues {
+  return values.clockOnly === true ? { ...values, presentPlayerIds: [], assignments: [] } : values;
 }
 
 /** Etiketter för positionslägena i bytesförslagen (#91). */

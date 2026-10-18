@@ -128,7 +128,10 @@ function ViewerLive({ matchId }: { readonly matchId: string }) {
     () => deriveMatchState(eventLog, serverTime.data?.now() ?? new Date(0)),
     [eventLog, serverTime.data],
   );
-  const formation = FORMATIONS.find((item) => item.id === matchState.formationId);
+  const clockOnly = matchState.clockOnly;
+  const formation = clockOnly
+    ? undefined
+    : FORMATIONS.find((item) => item.id === matchState.formationId);
   void tick;
 
   return (
@@ -175,29 +178,31 @@ function ViewerLive({ matchId }: { readonly matchId: string }) {
           </div>
         )}
 
-        <section aria-labelledby="playing-time-heading" className="space-y-3">
-          <h2 id="playing-time-heading" className="text-lg font-semibold">
-            Speltid per spelare
-          </h2>
-          <ul className="divide-y divide-white/10 rounded-2xl border border-white/10 bg-card px-4">
-            {Object.values(matchState.players)
-              .sort((left, right) => left.name.localeCompare(right.name, 'sv'))
-              .map((player) => (
-                <li
-                  key={player.playerId}
-                  className="flex min-h-touch items-center justify-between gap-3 py-2"
-                >
-                  <span className="min-w-0 truncate font-medium">
-                    {player.number === null ? '' : `${player.number} · `}
-                    {player.name}
-                  </span>
-                  <time className="text-muted-foreground shrink-0 font-medium tabular-nums">
-                    {formatClock(player.playedMs)}
-                  </time>
-                </li>
-              ))}
-          </ul>
-        </section>
+        {clockOnly ? null : (
+          <section aria-labelledby="playing-time-heading" className="space-y-3">
+            <h2 id="playing-time-heading" className="text-lg font-semibold">
+              Speltid per spelare
+            </h2>
+            <ul className="divide-y divide-white/10 rounded-2xl border border-white/10 bg-card px-4">
+              {Object.values(matchState.players)
+                .sort((left, right) => left.name.localeCompare(right.name, 'sv'))
+                .map((player) => (
+                  <li
+                    key={player.playerId}
+                    className="flex min-h-touch items-center justify-between gap-3 py-2"
+                  >
+                    <span className="min-w-0 truncate font-medium">
+                      {player.number === null ? '' : `${player.number} · `}
+                      {player.name}
+                    </span>
+                    <time className="text-muted-foreground shrink-0 font-medium tabular-nums">
+                      {formatClock(player.playedMs)}
+                    </time>
+                  </li>
+                ))}
+            </ul>
+          </section>
+        )}
 
         {match.isPending || events.isPending || serverTime.isPending ? (
           <p role="status" className="text-muted-foreground text-center text-sm">

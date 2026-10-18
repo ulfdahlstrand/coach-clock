@@ -214,7 +214,11 @@ function LiveMatchPage() {
     () => Object.fromEntries(fairness.players.map((player) => [player.playerId, player.debtMs])),
     [fairness.players],
   );
-  const formation = FORMATIONS.find((item) => item.id === matchState.formationId);
+  // En klockmatch visar bara klockan — inga byten, ingen plan (#clock-only).
+  const clockOnly = matchState.clockOnly;
+  const formation = clockOnly
+    ? undefined
+    : FORMATIONS.find((item) => item.id === matchState.formationId);
   const activePeriod = clock?.periodNumber ?? 0;
   const currentPeriodEnded =
     activePeriod > 0 &&
@@ -235,12 +239,12 @@ function LiveMatchPage() {
   }, [clock?.running]);
 
   useEffect(() => {
-    if (becameSubstitutionDue(wasSubstitutionDue.current, fairness.substitutionDue)) {
+    if (!clockOnly && becameSubstitutionDue(wasSubstitutionDue.current, fairness.substitutionDue)) {
       playFairnessAlert();
       setFairnessAlertOpen(true);
     }
     wasSubstitutionDue.current = fairness.substitutionDue;
-  }, [fairness.substitutionDue]);
+  }, [clockOnly, fairness.substitutionDue]);
 
   useEffect(() => {
     const suggestion = fairness.suggestedSubstitution;
@@ -416,11 +420,13 @@ function LiveMatchPage() {
           <p className="text-muted-foreground mt-4 text-sm tabular-nums">
             Totalt {clock === undefined ? '—:——' : formatClock(clock.elapsedMs)}
           </p>
-          <div className="mt-5 flex items-center justify-center gap-2 text-sm">
-            <span className="rounded-full bg-amber-300/15 px-3 py-1 font-semibold text-amber-200">
-              Nästa byte om {formatNextSubstitution(fairness.timeToNextSubstitutionMs)}
-            </span>
-          </div>
+          {clockOnly ? null : (
+            <div className="mt-5 flex items-center justify-center gap-2 text-sm">
+              <span className="rounded-full bg-amber-300/15 px-3 py-1 font-semibold text-amber-200">
+                Nästa byte om {formatNextSubstitution(fairness.timeToNextSubstitutionMs)}
+              </span>
+            </div>
+          )}
         </div>
 
         {/*

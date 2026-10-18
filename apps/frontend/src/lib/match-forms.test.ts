@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import {
   applyTeamDefaults,
   createMatchFormSchema,
+  createMatchResolver,
   loadMatchSetupDefaults,
   saveMatchSetupDefaults,
 } from './match-forms';
@@ -97,4 +98,26 @@ test('lagets förval minns positionsläget', () => {
   });
 
   expect(loadMatchSetupDefaults(teamId)?.positionMode).toBe('even');
+});
+
+test('en klockmatch skickas utan trupp och uppställning', async () => {
+  const result = await createMatchResolver(
+    {
+      teamId: '00000000-0000-4000-8000-000000000001',
+      opponent: 'Grön IF',
+      format: 7,
+      formationId: '7v7-2-3-1',
+      periodCount: 2,
+      periodLengthSeconds: 1200,
+      clockOnly: true,
+      // De dolda platserna kan vara halvfyllda — de får inte stoppa matchstarten.
+      presentPlayerIds: ['00000000-0000-4000-8000-000000000002'],
+      assignments: [{ slotId: 'gk', playerId: '' }],
+    },
+    undefined,
+    { fields: {}, shouldUseNativeValidation: false },
+  );
+
+  expect(result.errors).toEqual({});
+  expect(result.values).toMatchObject({ clockOnly: true, presentPlayerIds: [], assignments: [] });
 });

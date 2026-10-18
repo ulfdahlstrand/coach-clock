@@ -58,6 +58,7 @@ function SummaryPage() {
   const finishedAtDate = new Date(finishedAt);
   const summary = createMatchSummary(eventLog, finishedAtDate);
   const matchState = deriveMatchState(eventLog, finishedAtDate);
+  const clockOnly = matchState.clockOnly;
   const title = match.data ? `Match mot ${match.data.opponent}` : 'Matchsammanfattning';
 
   return (
@@ -82,82 +83,88 @@ function SummaryPage() {
 
       <MatchConflictPanel state={matchState} />
 
-      <div className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
-        <div className="flex items-start gap-3">
-          <CheckCircle2Icon
-            className={
-              summary.playerTimeIsBalanced
-                ? 'mt-0.5 size-5 text-emerald-600'
-                : 'mt-0.5 size-5 text-amber-600'
-            }
-            aria-hidden="true"
-          />
-          <div>
-            <h2 className="font-semibold text-stone-900">Speltiden stämmer av</h2>
-            <p className="mt-1 text-sm text-stone-600">
-              {summary.playerTimeIsBalanced
-                ? 'Alla spelaminuter motsvarar antalet spelare på planen under matchen.'
-                : 'Spelaminuterna avviker från antalet spelare på planen. Kontrollera matchloggen.'}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="space-y-3">
-        <div>
-          <p className="text-xs font-semibold tracking-[0.14em] text-stone-500 uppercase">
-            Speltid
-          </p>
-          <h2 className="text-lg font-bold text-stone-900">Alla spelare</h2>
-        </div>
-        <ol className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
-          {summary.players.map((player, index) => (
-            <li
-              key={player.playerId}
-              className="border-stone-100 flex gap-3 border-b p-4 last:border-0"
-            >
-              <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-stone-100 text-xs font-bold text-stone-600">
-                {index + 1}
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-baseline justify-between gap-3">
-                  <p className="truncate font-semibold text-stone-900">
-                    {player.number === null ? '' : `${player.number} · `}
-                    {player.name}
-                  </p>
-                  <p className="shrink-0 font-bold tabular-nums text-stone-900">
-                    {formatMatchDuration(player.playedMs)}
-                  </p>
-                </div>
-                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-stone-500">
-                  <span>Rättvis andel {formatMatchDuration(player.fairShareMs)}</span>
-                  <span
-                    className={
-                      player.differenceMs > 0
-                        ? 'font-medium text-amber-700'
-                        : 'font-medium text-emerald-700'
-                    }
-                  >
-                    {signedDuration(player.differenceMs)}
-                  </span>
-                  {player.roles.map((role) => (
-                    <span key={role.role}>
-                      {roleLabel(role.role)} {formatMatchDuration(role.playedMs)}
-                    </span>
-                  ))}
-                </div>
+      {clockOnly ? null : (
+        <>
+          <div className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+            <div className="flex items-start gap-3">
+              <CheckCircle2Icon
+                className={
+                  summary.playerTimeIsBalanced
+                    ? 'mt-0.5 size-5 text-emerald-600'
+                    : 'mt-0.5 size-5 text-amber-600'
+                }
+                aria-hidden="true"
+              />
+              <div>
+                <h2 className="font-semibold text-stone-900">Speltiden stämmer av</h2>
+                <p className="mt-1 text-sm text-stone-600">
+                  {summary.playerTimeIsBalanced
+                    ? 'Alla spelaminuter motsvarar antalet spelare på planen under matchen.'
+                    : 'Spelaminuterna avviker från antalet spelare på planen. Kontrollera matchloggen.'}
+                </p>
               </div>
-            </li>
-          ))}
-        </ol>
-      </div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <p className="text-xs font-semibold tracking-[0.14em] text-stone-500 uppercase">
+                Speltid
+              </p>
+              <h2 className="text-lg font-bold text-stone-900">Alla spelare</h2>
+            </div>
+            <ol className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
+              {summary.players.map((player, index) => (
+                <li
+                  key={player.playerId}
+                  className="border-stone-100 flex gap-3 border-b p-4 last:border-0"
+                >
+                  <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-stone-100 text-xs font-bold text-stone-600">
+                    {index + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <p className="truncate font-semibold text-stone-900">
+                        {player.number === null ? '' : `${player.number} · `}
+                        {player.name}
+                      </p>
+                      <p className="shrink-0 font-bold tabular-nums text-stone-900">
+                        {formatMatchDuration(player.playedMs)}
+                      </p>
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-stone-500">
+                      <span>Rättvis andel {formatMatchDuration(player.fairShareMs)}</span>
+                      <span
+                        className={
+                          player.differenceMs > 0
+                            ? 'font-medium text-amber-700'
+                            : 'font-medium text-emerald-700'
+                        }
+                      >
+                        {signedDuration(player.differenceMs)}
+                      </span>
+                      {player.roles.map((role) => (
+                        <span key={role.role}>
+                          {roleLabel(role.role)} {formatMatchDuration(role.playedMs)}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </>
+      )}
 
       <div className="space-y-3">
         <div>
           <p className="text-xs font-semibold tracking-[0.14em] text-stone-500 uppercase">
             Matchlogg
           </p>
-          <h2 className="text-lg font-bold text-stone-900">Perioder och byten</h2>
+          <h2 className="text-lg font-bold text-stone-900">
+            {clockOnly ? 'Perioder' : 'Perioder och byten'}
+          </h2>
         </div>
         <ol className="border-stone-200 space-y-3 border-l-2 pl-4">
           {summary.timeline.map((item) => (

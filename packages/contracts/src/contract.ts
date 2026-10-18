@@ -67,8 +67,13 @@ export const createMatchInputSchema = z.object({
     .optional(),
   /** Hur bytesförslagen tar hänsyn till positioner (#91). Saknas det gäller `time`. */
   positionMode: positionModeSchema.optional(),
-  presentPlayerIds: z.array(z.uuid()).min(1).refine(uniqueIds, 'Spelarna måste vara unika'),
-  assignments: z.array(slotAssignmentSchema).min(1),
+  /**
+   * Bara klocka, utan bytesstöd. Då behövs varken trupp eller uppställning och
+   * listorna nedan får vara tomma; backenden kräver dem bara för en vanlig match.
+   */
+  clockOnly: z.boolean().optional(),
+  presentPlayerIds: z.array(z.uuid()).refine(uniqueIds, 'Spelarna måste vara unika'),
+  assignments: z.array(slotAssignmentSchema),
 });
 
 export type CreateMatchInput = z.infer<typeof createMatchInputSchema>;

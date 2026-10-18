@@ -59,7 +59,9 @@ export const createMatch = os.matches.create.handler(async ({ input, context }) 
   if (formation === undefined || formation.format !== input.format) {
     throw new ORPCError('BAD_REQUEST', { message: 'Formationen passar inte vald spelform' });
   }
-  if (input.presentPlayerIds.length < formation.slots.length) {
+  // En klockmatch har varken trupp eller uppställning — bara perioder att tajma.
+  const clockOnly = input.clockOnly === true;
+  if (!clockOnly && input.presentPlayerIds.length < formation.slots.length) {
     throw new ORPCError('BAD_REQUEST', {
       message: 'För få närvarande spelare för startuppställningen',
     });
@@ -68,24 +70,27 @@ export const createMatch = os.matches.create.handler(async ({ input, context }) 
   const slotIds = new Set(formation.slots.map((slot) => slot.id));
   const assignedIds = input.assignments.map((assignment) => assignment.playerId);
   if (
-    input.assignments.length !== formation.slots.length ||
-    new Set(input.assignments.map((assignment) => assignment.slotId)).size !==
-      formation.slots.length ||
-    new Set(assignedIds).size !== assignedIds.length ||
-    input.assignments.some((assignment) => !slotIds.has(assignment.slotId)) ||
-    assignedIds.some((id) => !input.presentPlayerIds.includes(id))
+    !clockOnly &&
+    (input.assignments.length !== formation.slots.length ||
+      new Set(input.assignments.map((assignment) => assignment.slotId)).size !==
+        formation.slots.length ||
+      new Set(assignedIds).size !== assignedIds.length ||
+      input.assignments.some((assignment) => !slotIds.has(assignment.slotId)) ||
+      assignedIds.some((id) => !input.presentPlayerIds.includes(id)))
   ) {
     throw new ORPCError('BAD_REQUEST', { message: 'Startuppställningen är inte komplett' });
   }
 
-  const players = await context.db
-    .selectFrom('players')
-    .select(['id', 'name', 'number', 'is_goalkeeper'])
-    .where('team_id', '=', input.teamId)
-    .where('archived', '=', false)
-    .where('id', 'in', input.presentPlayerIds)
-    .execute();
-  if (players.length !== input.presentPlayerIds.length) {
+  const players = clockOnly
+    ? []
+    : await context.db
+        .selectFrom('players')
+        .select(['id', 'name', 'number', 'is_goalkeeper'])
+        .where('team_id', '=', input.teamId)
+        .where('archived', '=', false)
+        .where('id', 'in', input.presentPlayerIds)
+        .execute();
+  if (!clockOnly && players.length !== input.presentPlayerIds.length) {
     throw new ORPCError('BAD_REQUEST', { message: 'En närvarande spelare finns inte i laget' });
   }
 
@@ -124,21 +129,22 @@ export const createMatch = os.matches.create.handler(async ({ input, context }) 
       .returning('id')
       .executeTakeFirstOrThrow();
     const bench = input.presentPlayerIds.filter((id) => !assignedIds.includes(id));
-    const events = [
-      {
-        type: 'match_created',
-        payload: {
-          by: 'owner',
-          v: 1,
-          format: input.format,
-          formationId: input.formationId,
-          periods: input.periodCount,
-          periodLengthSeconds: input.periodLengthSeconds,
-          opponent: input.opponent,
-          idealShiftSeconds: input.idealShiftSeconds ?? DEFAULT_IDEAL_SHIFT_SECONDS,
-          positionMode: input.positionMode ?? 'time',
-        },
+    const createdEvent = {
+      type: 'match_created',
+      payload: {
+        by: 'owner',
+        v: 1,
+        format: input.format,
+        formationId: input.formationId,
+        periods: input.periodCount,
+        periodLengthSeconds: input.periodLengthSeconds,
+        opponent: input.opponent,
+        idealShiftSeconds: input.idealShiftSeconds ?? DEFAULT_IDEAL_SHIFT_SECONDS,
+        positionMode: input.positionMode ?? 'time',
+        ...(clockOnly ? { clockOnly: true } : {}),
       },
+    } as const;
+    const lineupEvents = [
       {
         type: 'squad_set',
         payload: {
@@ -153,9 +159,10 @@ export const createMatch = os.matches.create.handler(async ({ input, context }) 
         },
       },
       { type: 'lineup_set', payload: { by: 'owner', v: 1, assignments: input.assignments, bench } },
-      // Ingen period_started här: klockan startar när domaren eller tränaren
-      // blåser igång, inte när matchen läggs upp i appen (#89).
     ] as const;
+    // Ingen period_started här: klockan startar när domaren eller tränaren
+    // blåser igång, inte när matchen läggs upp i appen (#89).
+    const events = clockOnly ? [createdEvent] : [createdEvent, ...lineupEvents];
     await trx
       .insertInto('match_events')
       .values(
