@@ -20,7 +20,8 @@ export function ServiceWorkerUpdate() {
     let registration: ServiceWorkerRegistration | undefined;
     let disposed = false;
     const showWhenWaiting = () => {
-      if (!disposed && registration?.waiting !== undefined) setWaiting(true);
+      // `waiting` is null, not undefined, when no new worker has installed.
+      if (!disposed && registration?.waiting != null) setWaiting(true);
     };
     const onControllerChange = () => window.location.reload();
 
